@@ -555,18 +555,28 @@ function draw() {
 const searchInput = document.getElementById('search-input');
 const searchResultsEl = document.getElementById('search-results');
 let searchTimeout = null;
+let activeSearchId = 0;
 
 searchInput.placeholder = 'Search...';
 
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimeout);
   const q = searchInput.value.trim();
-  if (q.length < 2) { searchResultsEl.classList.remove('visible'); return; }
+  if (q.length < 2) {
+    activeSearchId++;
+    searchResultsEl.classList.remove('visible');
+    clearElement(searchResultsEl);
+    return;
+  }
   searchTimeout = setTimeout(() => wikidataSearch(q), 400);
 });
 
 searchInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { searchResultsEl.classList.remove('visible'); searchInput.blur(); }
+  if (e.key === 'Escape') {
+    activeSearchId++;
+    searchResultsEl.classList.remove('visible');
+    searchInput.blur();
+  }
 });
 
 searchInput.addEventListener('focus', () => {
@@ -574,7 +584,10 @@ searchInput.addEventListener('focus', () => {
 });
 
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#search-box')) searchResultsEl.classList.remove('visible');
+  if (!e.target.closest('#search-box')) {
+    activeSearchId++;
+    searchResultsEl.classList.remove('visible');
+  }
 });
 
 function detectInputLang(text) {
@@ -589,6 +602,8 @@ function detectInputLang(text) {
 }
 
 async function wikidataSearch(query) {
+  const searchId = ++activeSearchId;
+  const isCurrentSearch = () => searchId === activeSearchId && searchInput.value.trim() === query;
   showSearchMessage('Searching...');
   searchResultsEl.classList.add('visible');
 
@@ -608,6 +623,8 @@ async function wikidataSearch(query) {
         .catch(() => [])
     );
     const results = await Promise.all(fetches);
+    if (!isCurrentSearch()) return;
+
     for (const batch of results) {
       for (const entity of batch) {
         if (!seen.has(entity.id)) { seen.add(entity.id); allEntities.push(entity); }
@@ -635,10 +652,12 @@ async function wikidataSearch(query) {
       const lj = await lr.json();
       labelData = lj.entities || {};
     } catch {}
+    if (!isCurrentSearch()) return;
 
     const matched = [];
     for (const entity of allEntities) {
       const dates = await getEntityDates(entity.id);
+      if (!isCurrentSearch()) return;
       if (dates) {
         const ld = labelData[entity.id];
         const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
@@ -647,6 +666,7 @@ async function wikidataSearch(query) {
         if (matched.length >= 3) break;
       }
     }
+    if (!isCurrentSearch()) return;
 
     if (matched.length === 0) {
       showSearchMessage('No results with dates found');
@@ -677,6 +697,7 @@ async function wikidataSearch(query) {
       searchResultsEl.appendChild(div);
     }
   } catch (err) {
+    if (!isCurrentSearch()) return;
     showSearchMessage(`Error: ${err.message}`);
   }
 }
