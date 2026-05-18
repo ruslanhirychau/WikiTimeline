@@ -69,9 +69,11 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   background: var(--control-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--axis);
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 4px;
   transition: border-color 0.2s;
 }
 
@@ -86,13 +88,13 @@ body {
 .search-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 8px;
+  padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
   color: var(--text);
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
 }
 
 .search-tag .tag-dot {
@@ -103,15 +105,22 @@ body {
 }
 
 .search-tag .tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   cursor: pointer;
   opacity: 0.5;
   font-size: 14px;
   line-height: 1;
+  border-radius: 4px;
   transition: opacity 0.15s;
 }
 
 .search-tag .tag-remove:hover {
   opacity: 1;
+  background: var(--control-hover);
 }
 
 #search-input {
@@ -120,7 +129,7 @@ body {
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
-  padding: 4px 0;
+  padding: 8px;
   flex: 1;
   min-width: 120px;
   outline: none;
