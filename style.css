@@ -212,6 +212,22 @@ body {
   color: var(--text-muted);
 }
 
+#app-version {
+  position: fixed;
+  right: 16px;
+  bottom: 14px;
+  z-index: 6;
+  padding: 3px 7px;
+  border: 1px solid var(--axis);
+  border-radius: 4px;
+  background: var(--control-bg);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
 #jump-now {
   position: fixed;
   right: 16px;
