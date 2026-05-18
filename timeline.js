@@ -585,6 +585,13 @@ async function wikidataSearch(query) {
       return;
     }
 
+    const queryLower = query.toLowerCase();
+    allEntities.sort((a, b) => {
+      const aExact = (a.label || '').toLowerCase() === queryLower ? 0 : 1;
+      const bExact = (b.label || '').toLowerCase() === queryLower ? 0 : 1;
+      return aExact - bExact;
+    });
+
     // Fetch labels/descriptions in input language
     const ids = allEntities.slice(0, 15).map(e => e.id).join('|');
     const labelUrl = 'https://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + ids + '&props=labels|descriptions&languages=' + inputLang + '|en&format=json&origin=*';
@@ -617,13 +624,14 @@ async function wikidataSearch(query) {
       const div = document.createElement('div');
       div.className = 'search-result-item';
       const startLabel = formatDateForDisplay(r.startYear, r.startEra);
-      const dateText = r.isPointEvent
-        ? startLabel
-        : `${startLabel} — ${r.endYear != null ? formatDateForDisplay(r.endYear, r.endEra) : 'now'}`;
+      const hasEnd = r.endYear != null;
+      const dateText = hasEnd
+        ? `${startLabel} — ${formatDateForDisplay(r.endYear, r.endEra)}`
+        : startLabel;
       div.innerHTML = `<div class="sr-label">${r.label}</div><div class="sr-desc">${r.description}</div><div class="sr-desc">${dateText}</div>`;
       div.addEventListener('click', () => {
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
-        const endYearsAgo = r.endYear != null ? dateToYearsAgo(r.endYear, r.endEra) : (r.isPointEvent ? startYearsAgo : 0);
+        const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
         addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
         searchResultsEl.classList.remove('visible');
         searchResultsEl.innerHTML = '';
@@ -643,7 +651,12 @@ async function getEntityDates(entityId) {
   const json = await res.json();
   const claims = json.claims || {};
 
-  let startDate = extractDate(claims.P580) || extractDate(claims.P569) || extractDate(claims.P571) || extractDate(claims.P575) || extractDate(claims.P585) || extractDate(claims.P1319);
+  let startDate = extractDate(claims.P580) || extractDate(claims.P569) || extractDate(claims.P571) || extractDate(claims.P1319);
+  let isPointEvent = false;
+  if (!startDate) {
+    startDate = extractDate(claims.P575) || extractDate(claims.P585);
+    if (startDate) isPointEvent = true;
+  }
   let endDate = extractDate(claims.P582) || extractDate(claims.P570) || extractDate(claims.P576) || extractDate(claims.P1326);
 
   if (!startDate) {
@@ -651,12 +664,14 @@ async function getEntityDates(entityId) {
   }
 
   if (startDate) {
-    const result = { startYear: startDate.year, startEra: startDate.era, isPointEvent: !endDate };
+    const result = { startYear: startDate.year, startEra: startDate.era, isPointEvent: isPointEvent && !endDate };
     if (endDate) { result.endYear = endDate.year; result.endEra = endDate.era; }
     return result;
   }
 
-  return await getEntityDatesFromWikipedia(entityId);
+  const wpDates = await getEntityDatesFromWikipedia(entityId);
+  if (wpDates) wpDates.isPointEvent = false;
+  return wpDates;
 }
 
 function extractDateFromQualifiers(claims) {
@@ -713,6 +728,24 @@ async function getEntityDatesFromWikipedia(entityId) {
 
 function parseDatesFromText(text) {
   const first300 = text.slice(0, 2000);
+
+  // Try "X million/billion years ago" patterns (e.g. "233.23 million years ago")
+  const myaMatches = [];
+  const myaRe = /([\d.]+)\s*(million|billion)\s+years\s+ago/gi;
+  let myaM;
+  while ((myaM = myaRe.exec(first300)) !== null) {
+    const num = parseFloat(myaM[1]);
+    const mult = myaM[2].toLowerCase() === 'billion' ? 1e9 : 1e6;
+    myaMatches.push(Math.round(num * mult));
+  }
+  if (myaMatches.length >= 2) {
+    const oldest = Math.max(...myaMatches);
+    const newest = Math.min(...myaMatches);
+    return { startYear: oldest, startEra: 'bce', endYear: newest, endEra: 'bce' };
+  }
+  if (myaMatches.length === 1) {
+    return { startYear: myaMatches[0], startEra: 'bce' };
+  }
 
   // Try "from YYYY to YYYY" or "YYYY–YYYY" or "(YYYY-YYYY)" patterns
   const rangeMatch = first300.match(/(\d{3,4})\s*[–\-—]\s*(\d{3,4})/);
