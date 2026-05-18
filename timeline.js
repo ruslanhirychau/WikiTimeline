@@ -490,17 +490,28 @@ function draw() {
   centerTimeEl.textContent = `From ${formatYearsAgoFull(viewStart)} to ${formatYearsAgoFull(viewEnd)}`;
 
   const jumpEl = document.getElementById('jump-now');
-  jumpEl.style.top = (hudTop + document.getElementById('hud').offsetHeight + 4) + 'px';
+  jumpEl.style.top = hudTop + 'px';
+  const links = [];
   if (viewEnd > 0) {
+    links.push(`<a id="jump-now-link">→ now</a>`);
+  }
+  if (items.length > 0) {
+    links.push(`<a id="fit-all-link">⊞ fit all</a>`);
+  }
+  if (links.length > 0) {
     jumpEl.style.display = 'block';
-    jumpEl.innerHTML = `<a id="jump-now-link">→ now</a>`;
-    document.getElementById('jump-now-link').onclick = () => {
+    jumpEl.innerHTML = links.join('&nbsp;&nbsp;');
+    document.getElementById('jump-now-link')?.addEventListener('click', () => {
       const s = viewStart - viewEnd;
       viewEnd = 0;
       viewStart = s;
       if (viewStart > BIG_BANG) viewStart = BIG_BANG;
       draw();
-    };
+    });
+    document.getElementById('fit-all-link')?.addEventListener('click', () => {
+      fitView();
+      draw();
+    });
   } else {
     jumpEl.style.display = 'none';
   }
