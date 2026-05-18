@@ -139,6 +139,23 @@ function colorToRgba(color, alpha) {
 function showSearchMessage(message) {
   clearElement(searchResultsEl);
   appendTextElement(searchResultsEl, 'div', 'search-loading', message);
+  setSearchResultsVisible(true);
+  updateSearchResultsHeight();
+}
+
+function setSearchResultsVisible(visible) {
+  searchResultsEl.classList.toggle('has-results', visible);
+  searchResultsEl.classList.toggle('scrollable', visible);
+  updateSearchResultsHeight();
+}
+
+function updateSearchResultsHeight() {
+  if (!searchResultsEl.classList.contains('has-results')) {
+    searchResultsEl.style.height = '0px';
+    return;
+  }
+  const target = searchResultsEl.scrollHeight;
+  searchResultsEl.style.height = target + 'px';
 }
 
 function addItem(item) {
@@ -626,8 +643,8 @@ searchInput.addEventListener('input', () => {
   const q = searchInput.value.trim();
   if (q.length < 2) {
     activeSearchId++;
-    searchResultsEl.classList.remove('visible');
     clearElement(searchResultsEl);
+    setSearchResultsVisible(false);
     return;
   }
   searchTimeout = setTimeout(() => wikidataSearch(q), 400);
@@ -636,19 +653,23 @@ searchInput.addEventListener('input', () => {
 searchInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     activeSearchId++;
-    searchResultsEl.classList.remove('visible');
+    clearElement(searchResultsEl);
+    setSearchResultsVisible(false);
     searchInput.blur();
   }
 });
 
 searchInput.addEventListener('focus', () => {
-  if (searchResultsEl.children.length > 0) searchResultsEl.classList.add('visible');
+  if (searchResultsEl.children.length === 0) {
+    clearElement(searchResultsEl);
+  }
 });
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#search-box')) {
     activeSearchId++;
-    searchResultsEl.classList.remove('visible');
+    clearElement(searchResultsEl);
+    setSearchResultsVisible(false);
   }
 });
 
@@ -667,7 +688,6 @@ async function wikidataSearch(query) {
   const searchId = ++activeSearchId;
   const isCurrentSearch = () => searchId === activeSearchId && searchInput.value.trim() === query;
   showSearchMessage('Searching...');
-  searchResultsEl.classList.add('visible');
 
   try {
     const inputLang = detectInputLang(query);
@@ -759,13 +779,15 @@ async function wikidataSearch(query) {
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
         const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
         addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
-        searchResultsEl.classList.remove('visible');
         clearElement(searchResultsEl);
+        setSearchResultsVisible(false);
         searchInput.value = '';
         searchInput.blur();
       });
       searchResultsEl.appendChild(div);
     }
+    setSearchResultsVisible(searchResultsEl.children.length > 0);
+    updateSearchResultsHeight();
   } catch (err) {
     if (!isCurrentSearch()) return;
     showSearchMessage(`Error: ${err.message}`);
