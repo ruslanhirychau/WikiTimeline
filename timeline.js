@@ -384,10 +384,36 @@ function niceStep(range) {
   return 10 * mag;
 }
 
-// --- Draw a bar ---
+// --- Draw a bar or marker line ---
 function drawBar(s, barY, barH, alpha, borderAlpha) {
   const x1 = yearToX(s.start);
   const x2 = yearToX(s.end);
+  const isPoint = Math.abs(x1 - x2) < 2;
+
+  if (isPoint) {
+    const x = x1;
+    if (x < -50 || x > W + 50) return null;
+
+    ctx.strokeStyle = s.color;
+    ctx.globalAlpha = borderAlpha;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, barY); ctx.lineTo(x, barY + barH); ctx.stroke();
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = s.color;
+    const r = 4;
+    ctx.beginPath(); ctx.arc(x, barY + barH / 2, r, 0, Math.PI * 2); ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.font = '12px SF Mono, Consolas, monospace';
+    ctx.fillStyle = s.color;
+    ctx.textAlign = 'left';
+    const label = s.id;
+    ctx.fillText(label, x + 8, barY + barH / 2 + 4);
+
+    return { x: x - r, w: r * 2 };
+  }
+
   const barX = Math.max(0, Math.min(x1, x2));
   const barW = Math.min(W, Math.max(x1, x2)) - barX;
 
@@ -606,7 +632,7 @@ async function wikidataSearch(query) {
         const ld = labelData[entity.id];
         const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
         const desc = ld?.descriptions?.[inputLang]?.value || ld?.descriptions?.en?.value || entity.description || '';
-        matched.push({ wdId: entity.id, label, description: desc, wpLang: inputLang, ...dates });
+        matched.push({ wdId: entity.id, label, description: desc, wpLang: inputLang, isPointEvent: dates.isPointEvent || false, ...dates });
         if (matched.length >= 3) break;
       }
     }
@@ -621,11 +647,13 @@ async function wikidataSearch(query) {
       const div = document.createElement('div');
       div.className = 'search-result-item';
       const startLabel = formatDateForDisplay(r.startYear, r.startEra);
-      const endLabel = r.endYear != null ? formatDateForDisplay(r.endYear, r.endEra) : t('now');
-      div.innerHTML = `<div class="sr-label">${r.label}</div><div class="sr-desc">${r.description}</div><div class="sr-desc">${startLabel} — ${endLabel}</div>`;
+      const dateText = r.isPointEvent
+        ? startLabel
+        : `${startLabel} — ${r.endYear != null ? formatDateForDisplay(r.endYear, r.endEra) : t('now')}`;
+      div.innerHTML = `<div class="sr-label">${r.label}</div><div class="sr-desc">${r.description}</div><div class="sr-desc">${dateText}</div>`;
       div.addEventListener('click', () => {
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
-        const endYearsAgo = r.endYear != null ? dateToYearsAgo(r.endYear, r.endEra) : 0;
+        const endYearsAgo = r.endYear != null ? dateToYearsAgo(r.endYear, r.endEra) : (r.isPointEvent ? startYearsAgo : 0);
         addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
         searchResultsEl.classList.remove('visible');
         searchInput.value = '';
@@ -647,13 +675,48 @@ async function getEntityDates(entityId) {
   let startDate = extractDate(claims.P580) || extractDate(claims.P569) || extractDate(claims.P571) || extractDate(claims.P575) || extractDate(claims.P585) || extractDate(claims.P1319);
   let endDate = extractDate(claims.P582) || extractDate(claims.P570) || extractDate(claims.P576) || extractDate(claims.P1326);
 
+  if (!startDate) {
+    startDate = extractDateFromQualifiers(claims);
+  }
+
   if (startDate) {
-    const result = { startYear: startDate.year, startEra: startDate.era };
+    const result = { startYear: startDate.year, startEra: startDate.era, isPointEvent: !endDate };
     if (endDate) { result.endYear = endDate.year; result.endEra = endDate.era; }
     return result;
   }
 
   return await getEntityDatesFromWikipedia(entityId);
+}
+
+function extractDateFromQualifiers(claims) {
+  const propsToScan = ['P793', 'P527', 'P1542', 'P31'];
+  const dateProps = ['P580', 'P585', 'P571', 'P575', 'P1319'];
+  let earliest = null;
+  for (const prop of propsToScan) {
+    const arr = claims[prop];
+    if (!arr) continue;
+    for (const claim of arr) {
+      const quals = claim.qualifiers;
+      if (!quals) continue;
+      for (const dp of dateProps) {
+        if (!quals[dp]) continue;
+        const d = extractDateFromSnak(quals[dp][0]);
+        if (d && (!earliest || d.year < earliest.year)) earliest = d;
+      }
+    }
+  }
+  return earliest;
+}
+
+function extractDateFromSnak(snak) {
+  const val = snak?.datavalue?.value;
+  if (!val || !val.time) return null;
+  const time = val.time;
+  const negative = time.startsWith('-');
+  const match = time.match(/([+-]?\d+)-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const year = Math.abs(parseInt(match[1]));
+  return { year, era: negative ? 'bce' : 'ce' };
 }
 
 async function getEntityDatesFromWikipedia(entityId) {
@@ -756,10 +819,14 @@ function updateTooltip() {
   if (!found) { tooltip.style.display = 'none'; return; }
 
   const calStart = formatCalendarYear(found.start);
-  const calEnd = found.end > 0 ? formatCalendarYear(found.end) : formatCalendarYear(0);
-  const duration = found.start - found.end;
-
-  tooltip.innerHTML = `<div class="tt-title">${found.id}</div><div class="tt-dates">${calStart} — ${calEnd}<br>${formatDuration(duration)}</div>`;
+  const isPoint = found.start === found.end;
+  if (isPoint) {
+    tooltip.innerHTML = `<div class="tt-title">${found.id}</div><div class="tt-dates">${calStart}</div>`;
+  } else {
+    const calEnd = found.end > 0 ? formatCalendarYear(found.end) : formatCalendarYear(0);
+    const duration = found.start - found.end;
+    tooltip.innerHTML = `<div class="tt-title">${found.id}</div><div class="tt-dates">${calStart} — ${calEnd}<br>${formatDuration(duration)}</div>`;
+  }
   tooltip.style.display = 'block';
 
   let tx = mouseX + 16;
