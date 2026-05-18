@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timeline of Everything</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+  <canvas id="timeline"></canvas>
+  <div id="hud">
+    <div id="scale-label"></div>
+    <div id="center-time"></div>
+  </div>
+  <div id="jump-now"></div>
+  <div id="controls">
+    <button id="theme-toggle" title="Toggle theme">☀</button>
+    <button id="lang-toggle" title="Switch language">BY</button>
+  </div>
+  <div id="search-box">
+    <div id="search-tags"></div>
+    <input id="search-input" type="text" placeholder="Search..." autocomplete="off" />
+    <div id="search-results"></div>
+  </div>
+  <div id="tooltip"></div>
+  <script src="i18n.js"></script>
+  <script src="timeline.js"></script>
+</body>
+</html>
