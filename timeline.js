@@ -2,39 +2,21 @@ const canvas = document.getElementById('timeline');
 const ctx = canvas.getContext('2d');
 const scaleLabel = document.getElementById('scale-label');
 const centerTimeEl = document.getElementById('center-time');
-const themeToggle = document.getElementById('theme-toggle');
-const langToggle = document.getElementById('lang-toggle');
 
 let dpr = window.devicePixelRatio || 1;
 let W, H;
 
-const THEMES = {
-  dark: {
-    bg: '#0a0a0f',
-    axis: '#333',
-    tick: '#444',
-    tickLabel: '#555',
-    grid: 'rgba(255,255,255,0.05)',
-    barAlpha: 0.35,
-    barBorderAlpha: 0.8,
-    removeBtn: '#666',
-    removeBtnHover: '#ff4444',
-  },
-  light: {
-    bg: '#f5f5f0',
-    axis: '#ccc',
-    tick: '#aaa',
-    tickLabel: '#888',
-    grid: 'rgba(0,0,0,0.06)',
-    barAlpha: 0.3,
-    barBorderAlpha: 0.6,
-    removeBtn: '#999',
-    removeBtnHover: '#cc0000',
-  },
+const TH = {
+  bg: '#0a0a0f',
+  axis: '#333',
+  tick: '#444',
+  tickLabel: '#555',
+  grid: 'rgba(255,255,255,0.05)',
+  barAlpha: 0.35,
+  barBorderAlpha: 0.8,
 };
 
-function getTheme() { return document.body.dataset.theme || 'dark'; }
-function th(prop) { return THEMES[getTheme()][prop]; }
+function th(prop) { return TH[prop]; }
 
 function resize() {
   dpr = window.devicePixelRatio || 1;
@@ -48,29 +30,6 @@ function resize() {
   draw();
 }
 window.addEventListener('resize', resize);
-
-// Restore theme/lang from localStorage
-const savedTheme = localStorage.getItem('timeline_theme');
-if (savedTheme) { document.body.dataset.theme = savedTheme; themeToggle.textContent = savedTheme === 'dark' ? '☀' : '☾'; }
-const savedLang = localStorage.getItem('timeline_lang');
-if (savedLang) { setLang(savedLang); langToggle.textContent = savedLang === 'en' ? 'BY' : 'EN'; }
-
-themeToggle.addEventListener('click', () => {
-  const next = getTheme() === 'dark' ? 'light' : 'dark';
-  document.body.dataset.theme = next;
-  themeToggle.textContent = next === 'dark' ? '☀' : '☾';
-  localStorage.setItem('timeline_theme', next);
-  draw();
-});
-
-langToggle.addEventListener('click', () => {
-  const next = getLang() === 'en' ? 'by' : 'en';
-  setLang(next);
-  langToggle.textContent = next === 'en' ? 'BY' : 'EN';
-  localStorage.setItem('timeline_lang', next);
-  searchInput.placeholder = t('search');
-  draw();
-});
 
 // --- Time model ---
 const BIG_BANG = 13.8e9;
@@ -283,7 +242,7 @@ window.addEventListener('mouseup', (e) => {
 });
 
 async function openWikipedia(wdId, preferLang) {
-  const lang = preferLang || (getLang() === 'by' ? 'be' : 'en');
+  const lang = preferLang || 'en';
   const wiki = lang + 'wiki';
   try {
     const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${wdId}&props=sitelinks&sitefilter=${wiki},enwiki&format=json&origin=*`;
@@ -334,44 +293,44 @@ canvas.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 
 
 // --- Formatting ---
 function formatYearsAgo(y) {
-  if (y <= 0) return t('now');
-  if (y < 1) { const d = y * 365.25; if (d < 1) return `${(d*24).toFixed(1)} ${t('h')}`; return `${d.toFixed(0)} ${t('d')}`; }
-  if (y < 1e3) return `${y.toFixed(0)} ${t('yr')}`;
-  if (y < 1e6) return `${(y/1e3).toFixed(1)} ${t('kyr')}`;
-  if (y < 1e9) return `${(y/1e6).toFixed(1)} ${t('myr')}`;
-  return `${(y/1e9).toFixed(2)} ${t('byr')}`;
+  if (y <= 0) return 'now';
+  if (y < 1) { const d = y * 365.25; if (d < 1) return `${(d*24).toFixed(1)} h`; return `${d.toFixed(0)} d`; }
+  if (y < 1e3) return `${y.toFixed(0)} yr`;
+  if (y < 1e6) return `${(y/1e3).toFixed(1)} kyr`;
+  if (y < 1e9) return `${(y/1e6).toFixed(1)} Myr`;
+  return `${(y/1e9).toFixed(2)} Byr`;
 }
 
 function formatYearsAgoFull(y) {
-  if (y <= 0) return t('now');
-  if (y < 1e3) return `${y.toFixed(0)} ${t('yearsAgo')}`;
-  if (y < 1e6) return `${(y/1e3).toFixed(1)} ${t('kyrAgo')}`;
-  if (y < 1e9) return `${(y/1e6).toFixed(1)} ${t('myrAgo')}`;
-  return `${(y/1e9).toFixed(2)} ${t('byrAgo')}`;
+  if (y <= 0) return 'now';
+  if (y < 1e3) return `${y.toFixed(0)} years ago`;
+  if (y < 1e6) return `${(y/1e3).toFixed(1)} kyr ago`;
+  if (y < 1e9) return `${(y/1e6).toFixed(1)} Myr ago`;
+  return `${(y/1e9).toFixed(2)} Byr ago`;
 }
 
 function formatDuration(y) {
-  if (y < 1) { const d = y * 365.25; if (d < 1) return `${(d*24).toFixed(1)} ${t('h')}`; return `${d.toFixed(0)} ${t('d')}`; }
-  if (y < 1e3) return `${y.toFixed(0)} ${t('yr')}`;
-  if (y < 1e6) return `${(y/1e3).toFixed(1)} ${t('kyr')}`;
-  if (y < 1e9) return `${(y/1e6).toFixed(1)} ${t('myr')}`;
-  return `${(y/1e9).toFixed(2)} ${t('byr')}`;
+  if (y < 1) { const d = y * 365.25; if (d < 1) return `${(d*24).toFixed(1)} h`; return `${d.toFixed(0)} d`; }
+  if (y < 1e3) return `${y.toFixed(0)} yr`;
+  if (y < 1e6) return `${(y/1e3).toFixed(1)} kyr`;
+  if (y < 1e9) return `${(y/1e6).toFixed(1)} Myr`;
+  return `${(y/1e9).toFixed(2)} Byr`;
 }
 
 function formatCalendarYear(yearsAgo) {
   const year = CURRENT_YEAR - yearsAgo;
   if (year > 0) return `${year}`;
-  if (year === 0) return `1 ${t('bce')}`;
-  return `${Math.abs(year)} ${t('bce')}`;
+  if (year === 0) return '1 BCE';
+  return `${Math.abs(year)} BCE`;
 }
 
 function formatCalendarYearCompact(yearsAgo) {
   const year = CURRENT_YEAR - yearsAgo;
   if (Math.abs(year) >= 1e6) return `${(year/1e6).toFixed(1)}M`;
-  if (Math.abs(year) >= 1e3) return `${Math.round(Math.abs(year))}${year < 0 ? ` ${t('bce')}` : ''}`;
+  if (Math.abs(year) >= 1e3) return `${Math.round(Math.abs(year))}${year < 0 ? ' BCE' : ''}`;
   if (year > 0) return `${Math.round(year)}`;
-  if (year === 0) return `1 ${t('bce')}`;
-  return `${Math.round(Math.abs(year))} ${t('bce')}`;
+  if (year === 0) return '1 BCE';
+  return `${Math.round(Math.abs(year))} BCE`;
 }
 
 function niceStep(range) {
@@ -527,14 +486,14 @@ function draw() {
   const searchBox = document.getElementById('search-box');
   const hudTop = searchBox.offsetTop + searchBox.offsetHeight + 8;
   document.getElementById('hud').style.top = hudTop + 'px';
-  scaleLabel.textContent = `${t('range')}: ${formatDuration(span)}`;
-  centerTimeEl.textContent = `${t('from')} ${formatYearsAgoFull(viewStart)} ${t('to')} ${formatYearsAgoFull(viewEnd)}`;
+  scaleLabel.textContent = `Visible range: ${formatDuration(span)}`;
+  centerTimeEl.textContent = `From ${formatYearsAgoFull(viewStart)} to ${formatYearsAgoFull(viewEnd)}`;
 
   const jumpEl = document.getElementById('jump-now');
   jumpEl.style.top = (hudTop + document.getElementById('hud').offsetHeight + 4) + 'px';
   if (viewEnd > 0) {
     jumpEl.style.display = 'block';
-    jumpEl.innerHTML = `<a id="jump-now-link">→ ${t('now')}</a>`;
+    jumpEl.innerHTML = `<a id="jump-now-link">→ now</a>`;
     document.getElementById('jump-now-link').onclick = () => {
       const s = viewStart - viewEnd;
       viewEnd = 0;
@@ -552,7 +511,7 @@ const searchInput = document.getElementById('search-input');
 const searchResultsEl = document.getElementById('search-results');
 let searchTimeout = null;
 
-searchInput.placeholder = t('search');
+searchInput.placeholder = 'Search...';
 
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimeout);
@@ -585,7 +544,7 @@ function detectInputLang(text) {
 }
 
 async function wikidataSearch(query) {
-  searchResultsEl.innerHTML = `<div class="search-loading">${t('searching')}</div>`;
+  searchResultsEl.innerHTML = `<div class="search-loading">Searching...</div>`;
   searchResultsEl.classList.add('visible');
 
   try {
@@ -611,7 +570,7 @@ async function wikidataSearch(query) {
     }
 
     if (allEntities.length === 0) {
-      searchResultsEl.innerHTML = `<div class="search-loading">${t('noResults')}</div>`;
+      searchResultsEl.innerHTML = `<div class="search-loading">No results with dates found</div>`;
       return;
     }
 
@@ -638,7 +597,7 @@ async function wikidataSearch(query) {
     }
 
     if (matched.length === 0) {
-      searchResultsEl.innerHTML = `<div class="search-loading">${t('noResults')}</div>`;
+      searchResultsEl.innerHTML = `<div class="search-loading">No results with dates found</div>`;
       return;
     }
 
@@ -649,15 +608,16 @@ async function wikidataSearch(query) {
       const startLabel = formatDateForDisplay(r.startYear, r.startEra);
       const dateText = r.isPointEvent
         ? startLabel
-        : `${startLabel} — ${r.endYear != null ? formatDateForDisplay(r.endYear, r.endEra) : t('now')}`;
+        : `${startLabel} — ${r.endYear != null ? formatDateForDisplay(r.endYear, r.endEra) : 'now'}`;
       div.innerHTML = `<div class="sr-label">${r.label}</div><div class="sr-desc">${r.description}</div><div class="sr-desc">${dateText}</div>`;
       div.addEventListener('click', () => {
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
         const endYearsAgo = r.endYear != null ? dateToYearsAgo(r.endYear, r.endEra) : (r.isPointEvent ? startYearsAgo : 0);
         addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
         searchResultsEl.classList.remove('visible');
+        searchResultsEl.innerHTML = '';
         searchInput.value = '';
-        searchInput.focus();
+        searchInput.blur();
       });
       searchResultsEl.appendChild(div);
     }
@@ -798,8 +758,8 @@ function dateToYearsAgo(year, era) {
 }
 
 function formatDateForDisplay(year, era) {
-  if (era === 'bce') return `${year} ${t('bce')}`;
-  return `${year} ${t('ce')}`;
+  if (era === 'bce') return `${year} BCE`;
+  return `${year} CE`;
 }
 
 // --- Tooltip on hover ---
