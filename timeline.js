@@ -34,7 +34,7 @@ window.addEventListener('resize', resize);
 // --- Time model ---
 const BIG_BANG = 13.8e9;
 const NOW = 0;
-const CURRENT_YEAR = 2026;
+const CURRENT_YEAR = new Date().getUTCFullYear();
 
 let viewStart = 300;
 let viewEnd = NOW;
