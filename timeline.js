@@ -5,6 +5,7 @@ const centerTimeEl = document.getElementById('center-time');
 
 let dpr = window.devicePixelRatio || 1;
 let W, H;
+let drawScheduled = false;
 
 const TH = {
   bg: '#0a0a0f',
@@ -18,6 +19,15 @@ const TH = {
 
 function th(prop) { return TH[prop]; }
 
+function requestDraw() {
+  if (drawScheduled) return;
+  drawScheduled = true;
+  requestAnimationFrame(() => {
+    drawScheduled = false;
+    draw();
+  });
+}
+
 function resize() {
   dpr = window.devicePixelRatio || 1;
   W = window.innerWidth;
@@ -27,7 +37,7 @@ function resize() {
   canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  draw();
+  requestDraw();
 }
 window.addEventListener('resize', resize);
 
@@ -81,6 +91,31 @@ function assignRows(spans) {
 }
 
 const searchTagsEl = document.getElementById('search-tags');
+const jumpEl = document.getElementById('jump-now');
+const jumpNowLink = document.createElement('a');
+const jumpSpacer = document.createElement('span');
+const fitAllLink = document.createElement('a');
+
+jumpNowLink.id = 'jump-now-link';
+jumpNowLink.textContent = '→ now';
+jumpNowLink.addEventListener('click', () => {
+  const s = viewStart - viewEnd;
+  viewEnd = 0;
+  viewStart = s;
+  if (viewStart > BIG_BANG) viewStart = BIG_BANG;
+  requestDraw();
+});
+
+jumpSpacer.textContent = '  ';
+
+fitAllLink.id = 'fit-all-link';
+fitAllLink.textContent = '⊞ fit all';
+fitAllLink.addEventListener('click', () => {
+  fitView();
+  requestDraw();
+});
+
+jumpEl.append(jumpNowLink, jumpSpacer, fitAllLink);
 
 function clearElement(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
@@ -113,7 +148,7 @@ function addItem(item) {
   renderTags();
   saveState();
   fitView();
-  draw();
+  requestDraw();
 }
 
 function removeItem(id) {
@@ -121,7 +156,7 @@ function removeItem(id) {
   renderTags();
   saveState();
   if (items.length > 0) fitView();
-  draw();
+  requestDraw();
 }
 
 function saveState() {
@@ -190,7 +225,7 @@ function highlightItem(id) {
   highlightTimeout = setTimeout(() => {
     if (highlightedItemId === id) {
       highlightedItemId = null;
-      draw();
+      requestDraw();
     }
   }, 1000);
 }
@@ -204,7 +239,7 @@ function focusItem(id) {
   viewStart = nextView.start;
   viewEnd = nextView.end;
   highlightItem(id);
-  draw();
+  requestDraw();
 }
 
 function fitView() {
@@ -259,7 +294,7 @@ canvas.addEventListener('wheel', (e) => {
     viewStart = nextView.start;
     viewEnd = nextView.end;
   }
-  draw();
+  requestDraw();
 }, { passive: false });
 
 let dragStartY = 0;
@@ -283,7 +318,7 @@ window.addEventListener('mousemove', (e) => {
       }
     }
     canvas.style.cursor = onBar ? 'pointer' : 'default';
-    draw();
+    requestDraw();
     return;
   }
   const dx = e.clientX - dragStartX;
@@ -293,7 +328,7 @@ window.addEventListener('mousemove', (e) => {
   viewEnd = dragViewEnd + shift;
   if (viewStart > BIG_BANG) { viewStart = BIG_BANG; viewEnd = dragViewEnd + (BIG_BANG - dragViewStart); }
   if (viewEnd < NOW) { viewEnd = NOW; viewStart = dragViewStart + (NOW - dragViewEnd); }
-  draw();
+  requestDraw();
 });
 
 window.addEventListener('mouseup', (e) => {
@@ -343,7 +378,7 @@ canvas.addEventListener('touchmove', (e) => {
     viewEnd = dragViewEnd + dx * yearsPerPx;
     if (viewStart > BIG_BANG) { viewStart = BIG_BANG; viewEnd = dragViewEnd + (BIG_BANG - dragViewStart); }
     if (viewEnd < NOW) { viewEnd = NOW; viewStart = dragViewStart + (NOW - dragViewEnd); }
-    draw();
+    requestDraw();
   } else if (e.touches.length === 2) {
     const dist = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
     const center = (e.touches[0].clientX + e.touches[1].clientX) / 2;
@@ -356,7 +391,7 @@ canvas.addEventListener('touchmove', (e) => {
       if (viewEnd < NOW) viewEnd = NOW;
     }
     lastTouchDist = dist;
-    draw();
+    requestDraw();
   }
 }, { passive: false });
 canvas.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 0; });
@@ -563,43 +598,13 @@ function draw() {
   scaleLabel.textContent = `Visible range: ${formatDuration(span)}`;
   centerTimeEl.textContent = `From ${formatYearsAgoFull(viewStart)} to ${formatYearsAgoFull(viewEnd)}`;
 
-  const jumpEl = document.getElementById('jump-now');
   jumpEl.style.top = hudTop + 'px';
-  const links = [];
-  if (viewEnd > 0) {
-    const jumpNowLink = document.createElement('a');
-    jumpNowLink.id = 'jump-now-link';
-    jumpNowLink.textContent = '→ now';
-    jumpNowLink.addEventListener('click', () => {
-      const s = viewStart - viewEnd;
-      viewEnd = 0;
-      viewStart = s;
-      if (viewStart > BIG_BANG) viewStart = BIG_BANG;
-      draw();
-    });
-    links.push(jumpNowLink);
-  }
-  if (items.length > 0) {
-    const fitAllLink = document.createElement('a');
-    fitAllLink.id = 'fit-all-link';
-    fitAllLink.textContent = '⊞ fit all';
-    fitAllLink.addEventListener('click', () => {
-      fitView();
-      draw();
-    });
-    links.push(fitAllLink);
-  }
-  if (links.length > 0) {
-    jumpEl.style.display = 'block';
-    clearElement(jumpEl);
-    for (const [index, link] of links.entries()) {
-      if (index > 0) jumpEl.append(document.createTextNode('  '));
-      jumpEl.appendChild(link);
-    }
-  } else {
-    jumpEl.style.display = 'none';
-    clearElement(jumpEl);
-  }
+  const showJumpNow = viewEnd > 0;
+  const showFitAll = items.length > 0;
+  jumpNowLink.hidden = !showJumpNow;
+  fitAllLink.hidden = !showFitAll;
+  jumpSpacer.hidden = !(showJumpNow && showFitAll);
+  jumpEl.style.display = showJumpNow || showFitAll ? 'block' : 'none';
 }
 
 // --- Wikidata search ---
