@@ -49,6 +49,8 @@ const PAD_RIGHT = 40;
 // --- Items on timeline ---
 let items = [];
 let itemRects = [];
+let highlightedItemId = null;
+let highlightTimeout = null;
 
 const COLORS = [
   '#a78bfa', '#ef4444', '#34d399', '#fbbf24', '#60a5fa',
@@ -90,6 +92,13 @@ function appendTextElement(parent, tagName, className, text) {
   el.textContent = text;
   parent.appendChild(el);
   return el;
+}
+
+function colorToRgba(color, alpha) {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
+  if (!match) return color;
+  const [, r, g, b] = match;
+  return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
 }
 
 function showSearchMessage(message) {
@@ -142,6 +151,7 @@ function renderTags() {
   for (const item of items) {
     const tag = document.createElement('span');
     tag.className = 'search-tag';
+    tag.style.backgroundColor = colorToRgba(item.color, 0.15);
     const dot = document.createElement('span');
     dot.className = 'tag-dot';
     dot.style.backgroundColor = item.color;
@@ -149,12 +159,52 @@ function renderTags() {
     remove.className = 'tag-remove';
     remove.textContent = '×';
     tag.append(dot, document.createTextNode(item.id), remove);
+    tag.addEventListener('click', () => {
+      focusItem(item.id);
+    });
     remove.addEventListener('click', (e) => {
       e.stopPropagation();
       removeItem(item.id);
     });
     searchTagsEl.appendChild(tag);
   }
+}
+
+function clampView(start, end) {
+  const span = start - end;
+  if (span >= BIG_BANG) return { start: BIG_BANG, end: NOW };
+  if (start > BIG_BANG) {
+    start = BIG_BANG;
+    end = BIG_BANG - span;
+  }
+  if (end < NOW) {
+    end = NOW;
+    start = span;
+  }
+  return { start, end };
+}
+
+function highlightItem(id) {
+  highlightedItemId = id;
+  clearTimeout(highlightTimeout);
+  highlightTimeout = setTimeout(() => {
+    if (highlightedItemId === id) {
+      highlightedItemId = null;
+      draw();
+    }
+  }, 1000);
+}
+
+function focusItem(id) {
+  const item = items.find(it => it.id === id);
+  if (!item) return;
+  const span = viewStart - viewEnd;
+  const center = (item.start + item.end) / 2;
+  const nextView = clampView(center + span / 2, center - span / 2);
+  viewStart = nextView.start;
+  viewEnd = nextView.end;
+  highlightItem(id);
+  draw();
 }
 
 function fitView() {
@@ -189,28 +239,25 @@ let mouseX = -1, mouseY = -1;
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  if (e.ctrlKey) {
-    const zoomFactor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+  if (e.ctrlKey || e.shiftKey) {
+    const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    const zoomFactor = delta > 0 ? 1.15 : 1 / 1.15;
     const yearAtMouse = xToYear(e.clientX);
     const leftDist = yearAtMouse - viewEnd;
     const rightDist = viewStart - yearAtMouse;
     let newEnd = yearAtMouse - leftDist * zoomFactor;
     let newStart = yearAtMouse + rightDist * zoomFactor;
-    if (newStart > BIG_BANG) newStart = BIG_BANG;
-    if (newEnd < NOW) newEnd = NOW;
     if (newStart - newEnd < 1e-7) return;
-    viewStart = newStart;
-    viewEnd = newEnd;
+    const nextView = clampView(newStart, newEnd);
+    viewStart = nextView.start;
+    viewEnd = nextView.end;
   } else {
     const span = viewStart - viewEnd;
     const yearsPerPx = span / (W - PAD_LEFT - PAD_RIGHT);
     const shift = -(e.deltaX + e.deltaY) * yearsPerPx * 2;
-    let newStart = viewStart + shift;
-    let newEnd = viewEnd + shift;
-    if (newStart > BIG_BANG) { newStart = BIG_BANG; newEnd = BIG_BANG - span; }
-    if (newEnd < NOW) { newEnd = NOW; newStart = span; }
-    viewStart = newStart;
-    viewEnd = newEnd;
+    const nextView = clampView(viewStart + shift, viewEnd + shift);
+    viewStart = nextView.start;
+    viewEnd = nextView.end;
   }
   draw();
 }, { passive: false });
@@ -371,19 +418,22 @@ function drawBar(s, barY, barH, alpha, borderAlpha) {
   const x1 = yearToX(s.start);
   const x2 = yearToX(s.end);
   const isPoint = Math.abs(x1 - x2) < 2;
+  const isHighlighted = s.id === highlightedItemId;
+  const fillAlpha = isHighlighted ? Math.min(alpha + 0.35, 0.85) : alpha;
+  const strokeAlpha = isHighlighted ? 1 : borderAlpha;
 
   if (isPoint) {
     const x = x1;
     if (x < -50 || x > W + 50) return null;
 
     ctx.strokeStyle = s.color;
-    ctx.globalAlpha = borderAlpha;
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = strokeAlpha;
+    ctx.lineWidth = isHighlighted ? 3 : 2;
     ctx.beginPath(); ctx.moveTo(x, barY); ctx.lineTo(x, barY + barH); ctx.stroke();
 
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = fillAlpha;
     ctx.fillStyle = s.color;
-    const r = 4;
+    const r = isHighlighted ? 7 : 4;
     ctx.beginPath(); ctx.arc(x, barY + barH / 2, r, 0, Math.PI * 2); ctx.fill();
 
     ctx.globalAlpha = 1;
@@ -402,13 +452,14 @@ function drawBar(s, barY, barH, alpha, borderAlpha) {
   if (barX > W || barX + barW < 0) return null;
 
   ctx.fillStyle = s.color;
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = fillAlpha;
   ctx.fillRect(barX, barY, barW, barH);
 
-  ctx.globalAlpha = borderAlpha;
+  ctx.globalAlpha = strokeAlpha;
   ctx.strokeStyle = s.color;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+  ctx.lineWidth = isHighlighted ? 3 : 1;
+  const inset = isHighlighted ? 1.5 : 0.5;
+  ctx.strokeRect(barX + inset, barY + inset, barW - inset * 2, barH - inset * 2);
 
   ctx.globalAlpha = 1;
   const duration = s.start - s.end;
@@ -695,6 +746,8 @@ async function wikidataSearch(query) {
       appendTextElement(div, 'div', 'sr-desc', r.description);
       appendTextElement(div, 'div', 'sr-desc', dateText);
       div.addEventListener('click', () => {
+        activeSearchId++;
+        clearTimeout(searchTimeout);
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
         const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
         addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
