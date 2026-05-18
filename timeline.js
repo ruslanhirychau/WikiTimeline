@@ -556,6 +556,9 @@ const searchInput = document.getElementById('search-input');
 const searchResultsEl = document.getElementById('search-results');
 let searchTimeout = null;
 let activeSearchId = 0;
+const entityDatesCache = new Map();
+const SEARCH_CANDIDATE_LIMIT = 10;
+const SEARCH_RESULT_LIMIT = 5;
 
 searchInput.placeholder = 'Search...';
 
@@ -654,16 +657,22 @@ async function wikidataSearch(query) {
     } catch {}
     if (!isCurrentSearch()) return;
 
+    const candidateDateResults = await Promise.all(
+      allEntities.slice(0, SEARCH_CANDIDATE_LIMIT).map(async entity => ({
+        entity,
+        dates: await getEntityDatesCached(entity.id),
+      }))
+    );
+    if (!isCurrentSearch()) return;
+
     const matched = [];
-    for (const entity of allEntities) {
-      const dates = await getEntityDates(entity.id);
-      if (!isCurrentSearch()) return;
+    for (const { entity, dates } of candidateDateResults) {
       if (dates) {
         const ld = labelData[entity.id];
         const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
         const desc = ld?.descriptions?.[inputLang]?.value || ld?.descriptions?.en?.value || entity.description || '';
         matched.push({ wdId: entity.id, label, description: desc, wpLang: inputLang, isPointEvent: dates.isPointEvent || false, ...dates });
-        if (matched.length >= 3) break;
+        if (matched.length >= SEARCH_RESULT_LIMIT) break;
       }
     }
     if (!isCurrentSearch()) return;
@@ -700,6 +709,13 @@ async function wikidataSearch(query) {
     if (!isCurrentSearch()) return;
     showSearchMessage(`Error: ${err.message}`);
   }
+}
+
+function getEntityDatesCached(entityId) {
+  if (!entityDatesCache.has(entityId)) {
+    entityDatesCache.set(entityId, getEntityDates(entityId).catch(() => null));
+  }
+  return entityDatesCache.get(entityId);
 }
 
 async function getEntityDates(entityId) {
