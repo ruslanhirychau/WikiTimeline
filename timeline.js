@@ -80,6 +80,23 @@ function assignRows(spans) {
 
 const searchTagsEl = document.getElementById('search-tags');
 
+function clearElement(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function appendTextElement(parent, tagName, className, text) {
+  const el = document.createElement(tagName);
+  if (className) el.className = className;
+  el.textContent = text;
+  parent.appendChild(el);
+  return el;
+}
+
+function showSearchMessage(message) {
+  clearElement(searchResultsEl);
+  appendTextElement(searchResultsEl, 'div', 'search-loading', message);
+}
+
 function addItem(item) {
   const existing = items.find(r => r.id === item.id);
   if (existing) return;
@@ -121,12 +138,18 @@ function loadState() {
 }
 
 function renderTags() {
-  searchTagsEl.innerHTML = '';
+  clearElement(searchTagsEl);
   for (const item of items) {
     const tag = document.createElement('span');
     tag.className = 'search-tag';
-    tag.innerHTML = `<span class="tag-dot" style="background:${item.color}"></span>${item.id}<span class="tag-remove">×</span>`;
-    tag.querySelector('.tag-remove').addEventListener('click', (e) => {
+    const dot = document.createElement('span');
+    dot.className = 'tag-dot';
+    dot.style.backgroundColor = item.color;
+    const remove = document.createElement('span');
+    remove.className = 'tag-remove';
+    remove.textContent = '×';
+    tag.append(dot, document.createTextNode(item.id), remove);
+    remove.addEventListener('click', (e) => {
       e.stopPropagation();
       removeItem(item.id);
     });
@@ -252,7 +275,7 @@ async function openWikipedia(wdId, preferLang) {
     const title = sitelinks?.[wiki]?.title || sitelinks?.enwiki?.title;
     if (title) {
       const wpLang = sitelinks?.[wiki] ? lang : 'en';
-      window.open(`https://${wpLang}.wikipedia.org/wiki/${encodeURIComponent(title)}`, '_blank');
+      window.open(`https://${wpLang}.wikipedia.org/wiki/${encodeURIComponent(title)}`, '_blank', 'noopener,noreferrer');
     }
   } catch {}
 }
@@ -493,27 +516,38 @@ function draw() {
   jumpEl.style.top = hudTop + 'px';
   const links = [];
   if (viewEnd > 0) {
-    links.push(`<a id="jump-now-link">→ now</a>`);
-  }
-  if (items.length > 0) {
-    links.push(`<a id="fit-all-link">⊞ fit all</a>`);
-  }
-  if (links.length > 0) {
-    jumpEl.style.display = 'block';
-    jumpEl.innerHTML = links.join('&nbsp;&nbsp;');
-    document.getElementById('jump-now-link')?.addEventListener('click', () => {
+    const jumpNowLink = document.createElement('a');
+    jumpNowLink.id = 'jump-now-link';
+    jumpNowLink.textContent = '→ now';
+    jumpNowLink.addEventListener('click', () => {
       const s = viewStart - viewEnd;
       viewEnd = 0;
       viewStart = s;
       if (viewStart > BIG_BANG) viewStart = BIG_BANG;
       draw();
     });
-    document.getElementById('fit-all-link')?.addEventListener('click', () => {
+    links.push(jumpNowLink);
+  }
+  if (items.length > 0) {
+    const fitAllLink = document.createElement('a');
+    fitAllLink.id = 'fit-all-link';
+    fitAllLink.textContent = '⊞ fit all';
+    fitAllLink.addEventListener('click', () => {
       fitView();
       draw();
     });
+    links.push(fitAllLink);
+  }
+  if (links.length > 0) {
+    jumpEl.style.display = 'block';
+    clearElement(jumpEl);
+    for (const [index, link] of links.entries()) {
+      if (index > 0) jumpEl.append(document.createTextNode('\u00a0\u00a0'));
+      jumpEl.appendChild(link);
+    }
   } else {
     jumpEl.style.display = 'none';
+    clearElement(jumpEl);
   }
 }
 
@@ -544,18 +578,18 @@ document.addEventListener('click', (e) => {
 });
 
 function detectInputLang(text) {
-  if (/[Ѐ-ӿ]/.test(text)) {
-    if (/[ІіҐґЄєЇї]/.test(text)) return 'uk';
-    if (/[ЎўІі]/.test(text)) return 'be';
+  if (/[\u0400-\u04ff]/.test(text)) {
+    if (/[\u0406\u0456\u0490\u0491\u0404\u0454\u0407\u0457]/.test(text)) return 'uk';
+    if (/[\u040e\u045e\u0406\u0456]/.test(text)) return 'be';
     return 'ru';
   }
-  if (/[À-ÿ]/.test(text)) return 'fr';
-  if (/[ÄÖÜäöüß]/.test(text)) return 'de';
+  if (/[\u00c0-\u00ff]/.test(text)) return 'fr';
+  if (/[\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df]/.test(text)) return 'de';
   return 'en';
 }
 
 async function wikidataSearch(query) {
-  searchResultsEl.innerHTML = `<div class="search-loading">Searching...</div>`;
+  showSearchMessage('Searching...');
   searchResultsEl.classList.add('visible');
 
   try {
@@ -581,7 +615,7 @@ async function wikidataSearch(query) {
     }
 
     if (allEntities.length === 0) {
-      searchResultsEl.innerHTML = `<div class="search-loading">No results with dates found</div>`;
+      showSearchMessage('No results with dates found');
       return;
     }
 
@@ -615,11 +649,11 @@ async function wikidataSearch(query) {
     }
 
     if (matched.length === 0) {
-      searchResultsEl.innerHTML = `<div class="search-loading">No results with dates found</div>`;
+      showSearchMessage('No results with dates found');
       return;
     }
 
-    searchResultsEl.innerHTML = '';
+    clearElement(searchResultsEl);
     for (const r of matched) {
       const div = document.createElement('div');
       div.className = 'search-result-item';
@@ -628,20 +662,22 @@ async function wikidataSearch(query) {
       const dateText = hasEnd
         ? `${startLabel} — ${formatDateForDisplay(r.endYear, r.endEra)}`
         : startLabel;
-      div.innerHTML = `<div class="sr-label">${r.label}</div><div class="sr-desc">${r.description}</div><div class="sr-desc">${dateText}</div>`;
+      appendTextElement(div, 'div', 'sr-label', r.label);
+      appendTextElement(div, 'div', 'sr-desc', r.description);
+      appendTextElement(div, 'div', 'sr-desc', dateText);
       div.addEventListener('click', () => {
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
         const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
         addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
         searchResultsEl.classList.remove('visible');
-        searchResultsEl.innerHTML = '';
+        clearElement(searchResultsEl);
         searchInput.value = '';
         searchInput.blur();
       });
       searchResultsEl.appendChild(div);
     }
   } catch (err) {
-    searchResultsEl.innerHTML = `<div class="search-loading">Error: ${err.message}</div>`;
+    showSearchMessage(`Error: ${err.message}`);
   }
 }
 
@@ -824,12 +860,16 @@ function updateTooltip() {
 
   const calStart = formatCalendarYear(found.start);
   const isPoint = found.start === found.end;
+  clearElement(tooltip);
+  appendTextElement(tooltip, 'div', 'tt-title', found.id);
+  const datesEl = appendTextElement(tooltip, 'div', 'tt-dates', calStart);
   if (isPoint) {
-    tooltip.innerHTML = `<div class="tt-title">${found.id}</div><div class="tt-dates">${calStart}</div>`;
+    datesEl.textContent = calStart;
   } else {
     const calEnd = found.end > 0 ? formatCalendarYear(found.end) : formatCalendarYear(0);
     const duration = found.start - found.end;
-    tooltip.innerHTML = `<div class="tt-title">${found.id}</div><div class="tt-dates">${calStart} — ${calEnd}<br>${formatDuration(duration)}</div>`;
+    datesEl.textContent = `${calStart} — ${calEnd}`;
+    datesEl.append(document.createElement('br'), document.createTextNode(formatDuration(duration)));
   }
   tooltip.style.display = 'block';
 
