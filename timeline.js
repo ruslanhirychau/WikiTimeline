@@ -162,7 +162,7 @@ function fitView() {
   let maxStart = 0, minEnd = Infinity;
   for (const it of items) {
     maxStart = Math.max(maxStart, it.start);
-    minEnd = Math.min(minEnd, it.end);
+    minEnd = Math.min(it.end, minEnd);
   }
   const pad = Math.max((maxStart - minEnd) * 0.2, 20);
   viewStart = maxStart + pad;
@@ -542,7 +542,7 @@ function draw() {
     jumpEl.style.display = 'block';
     clearElement(jumpEl);
     for (const [index, link] of links.entries()) {
-      if (index > 0) jumpEl.append(document.createTextNode('\u00a0\u00a0'));
+      if (index > 0) jumpEl.append(document.createTextNode('  '));
       jumpEl.appendChild(link);
     }
   } else {
