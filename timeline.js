@@ -503,18 +503,21 @@ function drawBar(s, barY, barH, alpha, borderAlpha) {
   ctx.font = '12px SF Mono, Consolas, monospace';
   const textW = ctx.measureText(text).width;
   const textY = barY + barH / 2 + 4;
+  const visibleBarX = Math.max(barX, 0);
+  const visibleBarRight = Math.min(barX + barW, W);
+  const visibleBarW = visibleBarRight - visibleBarX;
 
-  if (barW > textW + 16) {
+  if (visibleBarW > textW + 16) {
     ctx.fillStyle = s.color;
     ctx.textAlign = 'left';
-    const textX = Math.max(barX + 8, Math.min(W / 2 - textW / 2, barX + barW - textW - 8));
+    const textX = Math.min(visibleBarX + 8, visibleBarRight - textW - 8);
     ctx.fillText(text, textX, textY);
-  } else if (barW > 20) {
+  } else if (visibleBarW > 20) {
     ctx.fillStyle = s.color;
     ctx.textAlign = 'left';
     ctx.save();
-    ctx.beginPath(); ctx.rect(barX, barY, barW, barH); ctx.clip();
-    ctx.fillText(text, barX + 4, textY);
+    ctx.beginPath(); ctx.rect(visibleBarX, barY, visibleBarW, barH); ctx.clip();
+    ctx.fillText(text, visibleBarX + 4, textY);
     ctx.restore();
   }
   ctx.globalAlpha = 1;
