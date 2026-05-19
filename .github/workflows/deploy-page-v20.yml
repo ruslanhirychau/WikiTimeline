@@ -1,0 +1,224 @@
+name: Deploy page v20
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-page-v20.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply v20 page changes
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          def replace_once(text, old, new, label):
+              if new in text:
+                  return text
+              if old not in text:
+                  raise SystemExit(f"Missing expected block: {label}")
+              return text.replace(old, new, 1)
+
+          index = Path('index.html')
+          s = index.read_text()
+          s = re.sub(r'(style\.css\?v=)\d+', r'\g<1>20', s)
+          s = re.sub(r'(timeline\.js\?v=)\d+', r'\g<1>20', s)
+          s = re.sub(r'<div id="app-version" aria-label="Version">v\d+</div>', '<div id="app-version" aria-label="Version">v20</div>', s)
+          index.write_text(s)
+
+          style = Path('style.css')
+          s = style.read_text()
+          old = """.search-tag .tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+"""
+          new = """.search-tag.muted {
+  opacity: 0.72;
+}
+
+.search-tag .tag-dot {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 2px;
+  cursor: pointer;
+}
+
+.search-tag .tag-dot-core {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+
+.search-tag.muted .tag-dot-core {
+  background: transparent !important;
+}
+"""
+          s = replace_once(s, old, new, 'tag dot muted styles')
+          style.write_text(s)
+
+          timeline = Path('timeline.js')
+          s = timeline.read_text()
+          s = replace_once(
+              s,
+              "const data = items.map(it => ({ id: it.id, start: it.start, end: it.end, color: it.color, wdId: it.wdId, wpLang: it.wpLang, startProp: it.startProp, endProp: it.endProp }));",
+              "const data = items.map(it => ({ id: it.id, start: it.start, end: it.end, color: it.color, wdId: it.wdId, wpLang: it.wpLang, startProp: it.startProp, endProp: it.endProp, muted: !!it.muted }));",
+              'save muted state',
+          )
+          s = replace_once(
+              s,
+              """        items = data.map(it => {
+          if ((it.wdId === 'Q937' || it.id === 'Albert Einstein') && !it.startProp && !it.endProp) {
+            return { ...it, startProp: 'P569', endProp: 'P570' };
+          }
+          return it;
+        });""",
+              """        items = data.map(it => {
+          if ((it.wdId === 'Q937' || it.id === 'Albert Einstein') && !it.startProp && !it.endProp) {
+            return { ...it, startProp: 'P569', endProp: 'P570', muted: !!it.muted };
+          }
+          return { ...it, muted: !!it.muted };
+        });""",
+              'load muted state',
+          )
+          s = replace_once(
+              s,
+              """    tag.className = 'search-tag';
+    tag.style.backgroundColor = colorToRgba(item.color, 0.15);
+    const dot = document.createElement('span');
+    dot.className = 'tag-dot';
+    dot.style.backgroundColor = item.color;
+    const remove = document.createElement('span');
+    remove.className = 'tag-remove';
+    remove.appendChild(createLucideIcon('x', 12));
+    tag.append(dot, document.createTextNode(item.id), remove);
+    tag.addEventListener('click', () => {
+      focusItem(item.id);
+    });""",
+              """    tag.className = 'search-tag';
+    if (item.muted) tag.classList.add('muted');
+    tag.style.backgroundColor = colorToRgba(item.color, 0.15);
+    const dot = document.createElement('span');
+    dot.className = 'tag-dot';
+    const dotCore = document.createElement('span');
+    dotCore.className = 'tag-dot-core';
+    dotCore.style.backgroundColor = item.muted ? 'transparent' : item.color;
+    dotCore.style.borderColor = item.color;
+    dot.appendChild(dotCore);
+    const remove = document.createElement('span');
+    remove.className = 'tag-remove';
+    remove.appendChild(createLucideIcon('x', 12));
+    tag.append(dot, document.createTextNode(item.id), remove);
+    dot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleItemMuted(item.id);
+    });
+    tag.addEventListener('click', () => {
+      if (item.muted) {
+        item.muted = false;
+        saveState();
+        renderTags();
+      }
+      focusItem(item.id);
+    });""",
+              'render muted tags',
+          )
+          s = replace_once(
+              s,
+              """function clampView(start, end) {""",
+              """function toggleItemMuted(id) {
+  const item = items.find(r => r.id === id);
+  if (!item) return;
+  item.muted = !item.muted;
+  saveState();
+  renderTags();
+  requestDraw();
+}
+
+function clampView(start, end) {""",
+              'toggle muted function',
+          )
+          s = replace_once(
+              s,
+              """function computeFitView() {
+  if (items.length === 0) return null;
+  let maxStart = 0, minEnd = Infinity;
+  for (const it of items) {""",
+              """function computeFitView() {
+  const visibleItems = items.filter(it => !it.muted);
+  if (visibleItems.length === 0) return null;
+  let maxStart = 0, minEnd = Infinity;
+  for (const it of visibleItems) {""",
+              'fit visible items',
+          )
+          s = replace_once(
+              s,
+              """  itemRects = [];
+  if (items.length > 0) {
+    const { rowCount, rowMap } = assignRows(items);""",
+              """  itemRects = [];
+  const visibleItems = items.filter(it => !it.muted);
+  if (visibleItems.length > 0) {
+    const { rowCount, rowMap } = assignRows(visibleItems);""",
+              'draw visible items setup',
+          )
+          s = replace_once(
+              s,
+              """    for (let i = 0; i < items.length; i++) {
+      const s = items[i];""",
+              """    for (let i = 0; i < visibleItems.length; i++) {
+      const s = visibleItems[i];""",
+              'draw visible items loop',
+          )
+          s = replace_once(
+              s,
+              "const showFitAll = items.length > 0;",
+              "const showFitAll = visibleItems.length > 0;",
+              'fit all visibility',
+          )
+          s = replace_once(
+              s,
+              """  addItem({ id: 'Albert Einstein', start: CURRENT_YEAR - 1879, end: CURRENT_YEAR - 1955, color: nextColor(), wdId: 'Q937', startProp: 'P569', endProp: 'P570' });
+  addItem({ id: 'World War I', start: CURRENT_YEAR - 1914, end: CURRENT_YEAR - 1918, color: nextColor(), wdId: 'Q361' });
+  addItem({ id: 'World War II', start: CURRENT_YEAR - 1939, end: CURRENT_YEAR - 1945, color: nextColor(), wdId: 'Q362' });""",
+              """  addItem({ id: 'Albert Einstein', start: CURRENT_YEAR - 1879, end: CURRENT_YEAR - 1955, color: nextColor(), wdId: 'Q937', startProp: 'P569', endProp: 'P570', muted: false });
+  addItem({ id: 'World War I', start: CURRENT_YEAR - 1914, end: CURRENT_YEAR - 1918, color: nextColor(), wdId: 'Q361', muted: false });
+  addItem({ id: 'World War II', start: CURRENT_YEAR - 1939, end: CURRENT_YEAR - 1945, color: nextColor(), wdId: 'Q362', muted: false });""",
+              'default muted state',
+          )
+          timeline.write_text(s)
+
+      - name: Validate JavaScript
+        run: node --check timeline.js
+
+      - name: Commit and push Pages update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
+          git add index.html style.css timeline.js
+          git commit -m "Release page v20" || exit 0
+          git push origin gh-pages
