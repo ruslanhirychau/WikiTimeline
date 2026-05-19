@@ -90,13 +90,38 @@ function assignRows(spans) {
   return { rowCount: rows.length, rowMap };
 }
 
+const LUCIDE_ICONS = {
+  arrowRight: ['M5 12h14', 'm12 5 7 7-7 7'],
+  maximize: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
+  x: ['M18 6 6 18', 'm6 6 12 12'],
+};
+
+function createLucideIcon(name, size = 14) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', size);
+  svg.setAttribute('height', size);
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.classList.add('lucide');
+  for (const d of LUCIDE_ICONS[name]) {
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', d);
+    svg.appendChild(p);
+  }
+  return svg;
+}
+
 const searchTagsEl = document.getElementById('search-tags');
 const jumpEl = document.getElementById('jump-now');
 const jumpNowLink = document.createElement('a');
 const fitAllLink = document.createElement('a');
 
 jumpNowLink.id = 'jump-now-link';
-jumpNowLink.textContent = '→ now';
+jumpNowLink.append(createLucideIcon('arrowRight', 13), document.createTextNode(' now'));
 jumpNowLink.addEventListener('click', () => {
   const s = viewStart - viewEnd;
   const targetStart = Math.min(s, BIG_BANG);
@@ -104,7 +129,7 @@ jumpNowLink.addEventListener('click', () => {
 });
 
 fitAllLink.id = 'fit-all-link';
-fitAllLink.textContent = '⊞ fit all';
+fitAllLink.append(createLucideIcon('maximize', 13), document.createTextNode(' fit all'));
 fitAllLink.addEventListener('click', () => {
   const target = computeFitView();
   if (target) animateView(target.start, target.end);
@@ -224,7 +249,7 @@ function renderTags() {
     dot.style.backgroundColor = item.color;
     const remove = document.createElement('span');
     remove.className = 'tag-remove';
-    remove.textContent = '×';
+    remove.appendChild(createLucideIcon('x', 12));
     tag.append(dot, document.createTextNode(item.id), remove);
     tag.addEventListener('click', () => {
       focusItem(item.id);

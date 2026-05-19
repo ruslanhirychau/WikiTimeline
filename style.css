@@ -113,12 +113,10 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   opacity: 0.5;
-  font-size: 14px;
-  line-height: 1;
   border-radius: 4px;
   transition: opacity 0.15s;
 }
@@ -270,6 +268,7 @@ body {
 #jump-now a {
   display: none;
   align-items: center;
+  gap: 4px;
   padding: 3px 8px;
   border: 1px solid var(--axis);
   border-radius: 4px;
