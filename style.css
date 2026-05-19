@@ -250,7 +250,7 @@ body {
 
 #tooltip {
   position: fixed;
-  pointer-events: none;
+  pointer-events: auto;
   background: var(--control-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -263,6 +263,19 @@ body {
   display: none;
   white-space: nowrap;
   max-width: 350px;
+}
+
+#tooltip .tt-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 7px;
+  color: #e8a735;
+  text-decoration: none;
+  font-size: 11px;
+}
+
+#tooltip .tt-link:hover {
+  color: var(--text);
 }
 
 #tooltip .tt-title {
@@ -364,4 +377,71 @@ body {
   pointer-events: none;
   z-index: 10;
   white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  #search-box {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    align-items: stretch;
+    gap: 4px;
+    max-height: 42vh;
+    overflow-y: auto;
+    border-radius: 8px;
+  }
+
+  #search-input {
+    order: -1;
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    font-size: 16px;
+    height: 38px;
+    padding: 0 10px;
+  }
+
+  #search-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .search-tag {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #hud {
+    left: 8px;
+    right: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    font-size: 11px;
+  }
+
+  #center-time {
+    display: none;
+  }
+
+  #jump-now {
+    grid-column: 2;
+  }
+
+  #search-results {
+    left: 8px;
+    right: 8px;
+    max-height: 50vh;
+  }
+
+  #tooltip {
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+  }
+
+  #app-version {
+    left: 8px;
+    bottom: 8px;
+  }
 }
