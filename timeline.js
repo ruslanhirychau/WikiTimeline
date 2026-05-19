@@ -60,7 +60,7 @@ const PAD_RIGHT = 40;
 let items = [];
 let itemRects = [];
 let highlightedItemId = null;
-let highlightTimeout = null;
+let highlightFade = 0;
 
 const COLORS = [
   '#a78bfa', '#ef4444', '#34d399', '#fbbf24', '#60a5fa',
@@ -290,13 +290,24 @@ function clampView(start, end) {
 
 function highlightItem(id) {
   highlightedItemId = id;
-  clearTimeout(highlightTimeout);
-  highlightTimeout = setTimeout(() => {
-    if (highlightedItemId === id) {
+  highlightFade = 1;
+  let last = performance.now();
+  function tick(now) {
+    if (highlightedItemId !== id) return;
+    const dt = now - last;
+    last = now;
+    highlightFade = Math.max(0, highlightFade - dt / 600);
+    if (highlightFade <= 0) {
+      highlightFade = 0;
       highlightedItemId = null;
-      requestDraw();
     }
-  }, 1000);
+    drawScheduled = false;
+    draw();
+    if (highlightedItemId === id) {
+      requestAnimationFrame(tick);
+    }
+  }
+  requestAnimationFrame(tick);
 }
 
 function focusItem(id) {
@@ -559,21 +570,29 @@ function drawBar(s, barY, barH, alpha, borderAlpha) {
   const x2 = yearToX(s.end);
   const isPoint = Math.abs(x1 - x2) < 2;
   const isHighlighted = s.id === highlightedItemId;
-  const fillAlpha = isHighlighted ? Math.min(alpha + 0.35, 0.85) : alpha;
-  const strokeAlpha = isHighlighted ? 1 : borderAlpha;
+  const hlProgress = isHighlighted ? highlightFade : 0;
+  const fillAlpha = alpha;
+  const strokeAlpha = borderAlpha;
 
   if (isPoint) {
     const x = x1;
     if (x < -50 || x > W + 50) return null;
 
+    if (hlProgress > 0) {
+      const glowR = 4 + 16 * hlProgress;
+      ctx.globalAlpha = 0.3 * hlProgress;
+      ctx.fillStyle = s.color;
+      ctx.beginPath(); ctx.arc(x, barY + barH / 2, glowR, 0, Math.PI * 2); ctx.fill();
+    }
+
     ctx.strokeStyle = s.color;
     ctx.globalAlpha = strokeAlpha;
-    ctx.lineWidth = isHighlighted ? 3 : 2;
+    ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, barY); ctx.lineTo(x, barY + barH); ctx.stroke();
 
     ctx.globalAlpha = fillAlpha;
     ctx.fillStyle = s.color;
-    const r = isHighlighted ? 7 : 4;
+    const r = 4;
     ctx.beginPath(); ctx.arc(x, barY + barH / 2, r, 0, Math.PI * 2); ctx.fill();
 
     ctx.globalAlpha = 1;
@@ -591,16 +610,29 @@ function drawBar(s, barY, barH, alpha, borderAlpha) {
 
   if (barX > W || barX + barW < 0) return null;
 
+  if (hlProgress > 0) {
+    const glowPad = 12 * hlProgress;
+    ctx.globalAlpha = 0.15 * hlProgress;
+    ctx.fillStyle = s.color;
+    ctx.fillRect(barX - glowPad, barY - glowPad, barW + glowPad * 2, barH + glowPad * 2);
+  }
+
   ctx.fillStyle = s.color;
   ctx.globalAlpha = fillAlpha;
   ctx.fillRect(barX, barY, barW, barH);
 
   ctx.globalAlpha = strokeAlpha;
   ctx.strokeStyle = s.color;
-  ctx.lineWidth = isHighlighted ? 3 : 1;
-  const inset = isHighlighted ? 1.5 : 0.5;
-  ctx.strokeRect(barX + inset, barY + inset, barW - inset * 2, barH - inset * 2);
+  ctx.lineWidth = 1;
+  const inset = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(barX + inset, barY);
+  ctx.lineTo(barX + inset, barY + barH);
+  ctx.moveTo(barX + barW - inset, barY);
+  ctx.lineTo(barX + barW - inset, barY + barH);
+  ctx.stroke();
 
+  ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
   const duration = s.start - s.end;
   const label = s.id;
@@ -864,20 +896,23 @@ async function wikidataSearch(query) {
     const candidateDateResults = await Promise.all(
       allEntities.slice(0, SEARCH_CANDIDATE_LIMIT).map(async entity => ({
         entity,
-        dates: await getEntityDatesCached(entity.id, signal),
+        allDates: await getAllEntityDatesCached(entity.id, signal),
       }))
     );
     if (!isCurrentSearch()) return;
 
     const matched = [];
-    for (const { entity, dates } of candidateDateResults) {
-      if (dates) {
-        const ld = labelData[entity.id];
-        const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
-        const desc = ld?.descriptions?.[inputLang]?.value || ld?.descriptions?.en?.value || entity.description || '';
-        matched.push({ wdId: entity.id, label, description: desc, wpLang: inputLang, isPointEvent: dates.isPointEvent || false, ...dates });
-        if (matched.length >= SEARCH_RESULT_LIMIT) break;
+    for (const { entity, allDates } of candidateDateResults) {
+      if (!allDates || allDates.length === 0) continue;
+      const ld = labelData[entity.id];
+      const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
+      const desc = ld?.descriptions?.[inputLang]?.value || ld?.descriptions?.en?.value || entity.description || '';
+      const hasMultiple = allDates.length > 1;
+      for (const dates of allDates.slice(0, 3)) {
+        const dateLabel = getDateLabelFromProps(dates.startProp, dates.endProp, inputLang);
+        matched.push({ wdId: entity.id, label, description: desc, wpLang: inputLang, isPointEvent: dates.isPointEvent || false, dateLabel, hasMultiple, ...dates });
       }
+      if (matched.length >= SEARCH_RESULT_LIMIT) break;
     }
     if (!isCurrentSearch()) return;
 
@@ -896,14 +931,25 @@ async function wikidataSearch(query) {
         ? `${startLabel} — ${formatDateForDisplay(r.endYear, r.endEra)}`
         : startLabel;
       appendTextElement(div, 'div', 'sr-label', r.label);
-      appendTextElement(div, 'div', 'sr-desc', r.description);
-      appendTextElement(div, 'div', 'sr-desc', dateText);
+      if (r.description) appendTextElement(div, 'div', 'sr-desc', r.description);
+      const dateLine = document.createElement('div');
+      dateLine.className = 'sr-desc';
+      if (r.dateLabel) {
+        const tag = document.createElement('span');
+        tag.className = 'sr-date-label';
+        tag.textContent = r.dateLabel;
+        dateLine.appendChild(tag);
+        dateLine.appendChild(document.createTextNode(' · '));
+      }
+      dateLine.appendChild(document.createTextNode(dateText));
+      div.appendChild(dateLine);
       div.addEventListener('click', () => {
         activeSearchId++;
         clearTimeout(searchTimeout);
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
         const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
-        addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang, startProp: r.startProp, endProp: r.endProp }, { animateFit: true });
+        const itemId = r.hasMultiple && r.dateLabel ? `${r.label} — ${r.dateLabel}` : r.label;
+        addItem({ id: itemId, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang, startProp: r.startProp, endProp: r.endProp }, { animateFit: true });
         clearElement(searchResultsEl);
         setSearchResultsVisible(false);
         searchInput.value = '';
@@ -972,6 +1018,65 @@ async function getEntityDates(entityId, signal) {
   const wpDates = await getEntityDatesFromWikipedia(entityId, signal);
   if (wpDates) wpDates.isPointEvent = false;
   return wpDates;
+}
+
+const DATE_PAIRS = [
+  { start: 'P569', end: 'P570', type: 'range' },
+  { start: 'P571', end: 'P576', type: 'range' },
+  { start: 'P580', end: 'P582', type: 'range' },
+  { start: 'P729', end: 'P730', type: 'range' },
+  { start: 'P1319', end: 'P1326', type: 'range' },
+  { start: 'P606', type: 'point' },
+  { start: 'P575', type: 'point' },
+  { start: 'P585', type: 'point' },
+];
+
+async function getAllEntityDates(entityId, signal) {
+  const url = `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${entityId}&format=json&origin=*`;
+  const res = await fetch(url, { signal });
+  const json = await res.json();
+  const claims = json.claims || {};
+
+  const results = [];
+  const seen = new Set();
+
+  for (const pair of DATE_PAIRS) {
+    const startDate = extractDate(claims[pair.start]);
+    if (!startDate) continue;
+    const endDate = pair.end ? extractDate(claims[pair.end]) : null;
+    const key = `${startDate.year}:${startDate.era}:${endDate?.year || ''}:${endDate?.era || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const r = { startYear: startDate.year, startEra: startDate.era, isPointEvent: pair.type === 'point' && !endDate, startProp: pair.start, endProp: endDate ? pair.end : null };
+    if (endDate) { r.endYear = endDate.year; r.endEra = endDate.era; }
+    results.push(r);
+  }
+
+  if (results.length === 0) {
+    const qualDate = extractDateFromQualifiers(claims);
+    if (qualDate) {
+      results.push({ startYear: qualDate.year, startEra: qualDate.era, isPointEvent: false, startProp: null, endProp: null });
+    }
+  }
+
+  if (results.length === 0) {
+    const wpDates = await getEntityDatesFromWikipedia(entityId, signal);
+    if (wpDates) { wpDates.isPointEvent = false; results.push(wpDates); }
+  }
+
+  return results;
+}
+
+const entityAllDatesCache = new Map();
+function getAllEntityDatesCached(entityId, signal) {
+  const cached = entityAllDatesCache.get(entityId);
+  if (cached) return cached;
+  const promise = getAllEntityDates(entityId, signal).catch(err => {
+    if (err.name === 'AbortError') entityAllDatesCache.delete(entityId);
+    return [];
+  });
+  entityAllDatesCache.set(entityId, promise);
+  return promise;
 }
 
 function extractDateFromQualifiers(claims) {
@@ -1115,6 +1220,7 @@ const PROP_LABELS = {
     P571: 'Inception', P576: 'Dissolved',
     P580: 'Start', P582: 'End',
     P575: 'Date of discovery', P585: 'Date',
+    P606: 'First flight', P729: 'Service entry', P730: 'Service retirement',
     P1319: 'Earliest date', P1326: 'Latest date',
   },
   ru: {
@@ -1122,6 +1228,7 @@ const PROP_LABELS = {
     P571: 'Основано', P576: 'Прекращено',
     P580: 'Начало', P582: 'Окончание',
     P575: 'Дата открытия', P585: 'Дата',
+    P606: 'Первый полёт', P729: 'Начало эксплуатации', P730: 'Конец эксплуатации',
     P1319: 'Самая ранняя дата', P1326: 'Самая поздняя дата',
   },
 };
@@ -1131,17 +1238,31 @@ const RANGE_LABELS = {
     'P569-P570': 'Lifespan',
     'P571-P576': 'Existence',
     'P580-P582': 'Period',
+    'P729-P730': 'Service period',
     'P1319-P1326': 'Range',
   },
   ru: {
     'P569-P570': 'Годы жизни',
     'P571-P576': 'Существование',
     'P580-P582': 'Период',
+    'P729-P730': 'Период эксплуатации',
     'P1319-P1326': 'Диапазон',
   },
 };
 
 const LIVING_LABEL = { en: 'Born (still alive)', ru: 'Дата рождения' };
+
+function getDateLabelFromProps(startProp, endProp, lang) {
+  const l = (lang === 'ru') ? 'ru' : 'en';
+  const labels = PROP_LABELS[l];
+  const ranges = RANGE_LABELS[l];
+  if (!startProp) return '';
+  if (endProp) {
+    const key = startProp + '-' + endProp;
+    return ranges[key] || `${labels[startProp] || ''} — ${labels[endProp] || ''}`;
+  }
+  return labels[startProp] || '';
+}
 
 function getDateLabel(item) {
   const lang = (item.wpLang === 'ru') ? 'ru' : 'en';
