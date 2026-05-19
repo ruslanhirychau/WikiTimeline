@@ -440,7 +440,9 @@ let mouseX = -1, mouseY = -1;
 let activeTooltipItemId = null;
 let activeTooltipX = 0;
 let activeTooltipY = 0;
+let activeTooltipWithLink = false;
 const wikipediaUrlCache = new Map();
+const wikipediaUrlPending = new Set();
 
 function getItemAtPoint(x, y) {
   for (const rect of itemRects) {
@@ -453,6 +455,7 @@ function getItemAtPoint(x, y) {
 
 function hideTooltip() {
   activeTooltipItemId = null;
+  activeTooltipWithLink = false;
   tooltip.style.display = 'none';
 }
 
@@ -498,8 +501,14 @@ canvas.addEventListener('mousedown', (e) => {
 window.addEventListener('mousemove', (e) => {
   mouseX = e.clientX; mouseY = e.clientY;
   if (!isDragging) {
-    const onBar = !!getItemAtPoint(mouseX, mouseY)?.wdId;
+    const item = getItemAtPoint(mouseX, mouseY);
+    const onBar = !!item?.wdId;
     canvas.style.cursor = onBar ? 'pointer' : 'default';
+    if (onBar) {
+      showTooltipForItem(item, mouseX, mouseY, { withLink: false });
+    } else {
+      hideTooltip();
+    }
     requestDraw();
     return;
   }
@@ -520,7 +529,7 @@ window.addEventListener('mouseup', (e) => {
   if (!wasDrag) {
     const item = getItemAtPoint(e.clientX, e.clientY);
     if (item?.wdId) {
-      showTooltipForItem(item, e.clientX, e.clientY);
+      openWikipedia(item.wdId, item.wpLang);
       return;
     }
     hideTooltip();
@@ -607,7 +616,7 @@ canvas.addEventListener('touchend', (e) => {
   if (!wasTap) return;
   const item = getItemAtPoint(touch.clientX, touch.clientY);
   if (item?.wdId) {
-    showTooltipForItem(item, touch.clientX, touch.clientY);
+    showTooltipForItem(item, touch.clientX, touch.clientY, { withLink: true });
   } else {
     hideTooltip();
   }
@@ -1439,14 +1448,21 @@ function addTooltipRow(parent, label, value) {
   return row;
 }
 
-function showTooltipForItem(item, x, y) {
+function showTooltipForItem(item, x, y, opts = {}) {
   activeTooltipItemId = item.id;
   activeTooltipX = x;
   activeTooltipY = y;
-  renderTooltip(item);
+  activeTooltipWithLink = !!opts.withLink;
+  renderTooltip(item, activeTooltipWithLink ? null : '');
+  if (!activeTooltipWithLink) return;
+  const cacheKey = `${item.wdId}:${item.wpLang || 'en'}`;
+  if (wikipediaUrlCache.has(cacheKey) || wikipediaUrlPending.has(cacheKey)) return;
+  wikipediaUrlPending.add(cacheKey);
   getWikipediaUrl(item.wdId, item.wpLang).then((wpUrl) => {
     const activeItem = items.find(it => it.id === activeTooltipItemId);
     if (wpUrl && activeItem?.id === item.id) renderTooltip(activeItem, wpUrl);
+  }).finally(() => {
+    wikipediaUrlPending.delete(cacheKey);
   });
 }
 
@@ -1492,7 +1508,8 @@ function updateTooltip() {
     tooltip.style.display = 'none';
     return;
   }
-  renderTooltip(items.find(it => it.id === activeTooltipItemId));
+  const wpUrl = activeTooltipWithLink ? null : '';
+  renderTooltip(items.find(it => it.id === activeTooltipItemId), wpUrl);
 }
 
 if (!loadState()) {
