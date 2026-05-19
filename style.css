@@ -209,6 +209,17 @@ body {
   font-weight: 500;
 }
 
+.search-result-item.sr-disabled {
+  color: var(--text-faint);
+  cursor: default;
+  pointer-events: none;
+}
+
+.search-result-item.sr-disabled .sr-label,
+.search-result-item.sr-disabled .sr-desc {
+  color: var(--text-faint);
+}
+
 .search-loading {
   padding: 12px;
   text-align: center;

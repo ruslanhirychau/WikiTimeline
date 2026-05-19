@@ -812,8 +812,14 @@ searchInput.addEventListener('keydown', (e) => {
 });
 
 searchInput.addEventListener('focus', () => {
-  if (searchResultsEl.children.length === 0) {
-    clearElement(searchResultsEl);
+  if (searchResultsEl.children.length > 0) {
+    setSearchResultsVisible(true);
+  } else {
+    const q = searchInput.value.trim();
+    if (q.length >= 2) {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => wikidataSearch(q), 200);
+    }
   }
 });
 
@@ -903,10 +909,10 @@ async function wikidataSearch(query) {
 
     const matched = [];
     for (const { entity, allDates } of candidateDateResults) {
-      if (!allDates || allDates.length === 0) continue;
       const ld = labelData[entity.id];
       const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
       const desc = ld?.descriptions?.[inputLang]?.value || ld?.descriptions?.en?.value || entity.description || '';
+      if (!allDates || allDates.length === 0) continue;
       const hasMultiple = allDates.length > 1;
       for (const dates of allDates.slice(0, 3)) {
         const dateLabel = getDateLabelFromProps(dates.startProp, dates.endProp, inputLang);
@@ -914,10 +920,17 @@ async function wikidataSearch(query) {
       }
       if (matched.length >= SEARCH_RESULT_LIMIT) break;
     }
+    for (const { entity, allDates } of candidateDateResults) {
+      if (allDates && allDates.length > 0) continue;
+      const ld = labelData[entity.id];
+      const label = ld?.labels?.[inputLang]?.value || ld?.labels?.en?.value || entity.label;
+      const desc = ld?.descriptions?.[inputLang]?.value || ld?.descriptions?.en?.value || entity.description || '';
+      matched.push({ wdId: entity.id, label, description: desc, noDates: true });
+    }
     if (!isCurrentSearch()) return;
 
     if (matched.length === 0) {
-      showSearchMessage('No results with dates found');
+      showSearchMessage('No results found');
       return;
     }
 
@@ -925,36 +938,41 @@ async function wikidataSearch(query) {
     for (const r of matched) {
       const div = document.createElement('div');
       div.className = 'search-result-item';
-      const startLabel = formatDateForDisplay(r.startYear, r.startEra);
-      const hasEnd = r.endYear != null;
-      const dateText = hasEnd
-        ? `${startLabel} — ${formatDateForDisplay(r.endYear, r.endEra)}`
-        : startLabel;
+      if (r.noDates) div.classList.add('sr-disabled');
       appendTextElement(div, 'div', 'sr-label', r.label);
       if (r.description) appendTextElement(div, 'div', 'sr-desc', r.description);
-      const dateLine = document.createElement('div');
-      dateLine.className = 'sr-desc';
-      if (r.dateLabel) {
-        const tag = document.createElement('span');
-        tag.className = 'sr-date-label';
-        tag.textContent = r.dateLabel;
-        dateLine.appendChild(tag);
-        dateLine.appendChild(document.createTextNode(' · '));
+      if (r.noDates) {
+        appendTextElement(div, 'div', 'sr-desc', 'No dates');
+      } else {
+        const startLabel = formatDateForDisplay(r.startYear, r.startEra);
+        const hasEnd = r.endYear != null;
+        const dateText = hasEnd
+          ? `${startLabel} — ${formatDateForDisplay(r.endYear, r.endEra)}`
+          : startLabel;
+        const dateLine = document.createElement('div');
+        dateLine.className = 'sr-desc';
+        if (r.dateLabel) {
+          const tag = document.createElement('span');
+          tag.className = 'sr-date-label';
+          tag.textContent = r.dateLabel;
+          dateLine.appendChild(tag);
+          dateLine.appendChild(document.createTextNode(' · '));
+        }
+        dateLine.appendChild(document.createTextNode(dateText));
+        div.appendChild(dateLine);
+        div.addEventListener('click', () => {
+          activeSearchId++;
+          clearTimeout(searchTimeout);
+          const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
+          const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
+          const itemId = r.hasMultiple && r.dateLabel ? `${r.label} — ${r.dateLabel}` : r.label;
+          addItem({ id: itemId, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang, startProp: r.startProp, endProp: r.endProp }, { animateFit: true });
+          clearElement(searchResultsEl);
+          setSearchResultsVisible(false);
+          searchInput.value = '';
+          searchInput.blur();
+        });
       }
-      dateLine.appendChild(document.createTextNode(dateText));
-      div.appendChild(dateLine);
-      div.addEventListener('click', () => {
-        activeSearchId++;
-        clearTimeout(searchTimeout);
-        const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
-        const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
-        const itemId = r.hasMultiple && r.dateLabel ? `${r.label} — ${r.dateLabel}` : r.label;
-        addItem({ id: itemId, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang, startProp: r.startProp, endProp: r.endProp }, { animateFit: true });
-        clearElement(searchResultsEl);
-        setSearchResultsVisible(false);
-        searchInput.value = '';
-        searchInput.blur();
-      });
       searchResultsEl.appendChild(div);
     }
     selectedResultIndex = 0;
