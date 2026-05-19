@@ -105,12 +105,31 @@ body {
   -webkit-user-select: none;
 }
 
+.search-tag.muted {
+  opacity: 0.72;
+}
+
 .search-tag .tag-dot {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 2px;
+  cursor: pointer;
+}
+
+.search-tag .tag-dot-core {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  flex-shrink: 0;
-  margin-left: 4px;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+
+.search-tag.muted .tag-dot-core {
+  background: transparent !important;
 }
 
 .search-tag .tag-remove {
