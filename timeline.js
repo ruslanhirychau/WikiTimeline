@@ -441,6 +441,12 @@ let activeTooltipItemId = null;
 let activeTooltipX = 0;
 let activeTooltipY = 0;
 const wikipediaUrlCache = new Map();
+const wikipediaUrlPending = new Set();
+const hoverTooltipQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+
+function usesHoverTooltips() {
+  return hoverTooltipQuery.matches;
+}
 
 function getItemAtPoint(x, y) {
   for (const rect of itemRects) {
@@ -498,8 +504,16 @@ canvas.addEventListener('mousedown', (e) => {
 window.addEventListener('mousemove', (e) => {
   mouseX = e.clientX; mouseY = e.clientY;
   if (!isDragging) {
-    const onBar = !!getItemAtPoint(mouseX, mouseY)?.wdId;
+    const item = getItemAtPoint(mouseX, mouseY);
+    const onBar = !!item?.wdId;
     canvas.style.cursor = onBar ? 'pointer' : 'default';
+    if (usesHoverTooltips()) {
+      if (onBar) {
+        showTooltipForItem(item, mouseX, mouseY);
+      } else if (!tooltip.contains(e.target)) {
+        hideTooltip();
+      }
+    }
     requestDraw();
     return;
   }
@@ -520,7 +534,11 @@ window.addEventListener('mouseup', (e) => {
   if (!wasDrag) {
     const item = getItemAtPoint(e.clientX, e.clientY);
     if (item?.wdId) {
-      showTooltipForItem(item, e.clientX, e.clientY);
+      if (usesHoverTooltips()) {
+        openWikipedia(item.wdId, item.wpLang);
+      } else {
+        showTooltipForItem(item, e.clientX, e.clientY);
+      }
       return;
     }
     hideTooltip();
@@ -1444,9 +1462,14 @@ function showTooltipForItem(item, x, y) {
   activeTooltipX = x;
   activeTooltipY = y;
   renderTooltip(item);
+  const cacheKey = `${item.wdId}:${item.wpLang || 'en'}`;
+  if (wikipediaUrlCache.has(cacheKey) || wikipediaUrlPending.has(cacheKey)) return;
+  wikipediaUrlPending.add(cacheKey);
   getWikipediaUrl(item.wdId, item.wpLang).then((wpUrl) => {
     const activeItem = items.find(it => it.id === activeTooltipItemId);
     if (wpUrl && activeItem?.id === item.id) renderTooltip(activeItem, wpUrl);
+  }).finally(() => {
+    wikipediaUrlPending.delete(cacheKey);
   });
 }
 
