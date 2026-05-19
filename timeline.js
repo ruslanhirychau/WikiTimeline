@@ -93,29 +93,24 @@ function assignRows(spans) {
 const searchTagsEl = document.getElementById('search-tags');
 const jumpEl = document.getElementById('jump-now');
 const jumpNowLink = document.createElement('a');
-const jumpSpacer = document.createElement('span');
 const fitAllLink = document.createElement('a');
 
 jumpNowLink.id = 'jump-now-link';
 jumpNowLink.textContent = '→ now';
 jumpNowLink.addEventListener('click', () => {
   const s = viewStart - viewEnd;
-  viewEnd = 0;
-  viewStart = s;
-  if (viewStart > BIG_BANG) viewStart = BIG_BANG;
-  requestDraw();
+  const targetStart = Math.min(s, BIG_BANG);
+  animateView(targetStart, 0);
 });
-
-jumpSpacer.textContent = '  ';
 
 fitAllLink.id = 'fit-all-link';
 fitAllLink.textContent = '⊞ fit all';
 fitAllLink.addEventListener('click', () => {
-  fitView();
-  requestDraw();
+  const target = computeFitView();
+  if (target) animateView(target.start, target.end);
 });
 
-jumpEl.append(jumpNowLink, jumpSpacer, fitAllLink);
+jumpEl.append(jumpNowLink, fitAllLink);
 
 function clearElement(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
@@ -140,31 +135,51 @@ function showSearchMessage(message) {
   clearElement(searchResultsEl);
   appendTextElement(searchResultsEl, 'div', 'search-loading', message);
   setSearchResultsVisible(true);
-  updateSearchResultsHeight();
 }
 
+let searchResultsHideTimer = null;
 function setSearchResultsVisible(visible) {
-  searchResultsEl.classList.toggle('has-results', visible);
-  searchResultsEl.classList.toggle('scrollable', visible);
-  updateSearchResultsHeight();
-}
-
-function updateSearchResultsHeight() {
-  if (!searchResultsEl.classList.contains('has-results')) {
-    searchResultsEl.style.height = '0px';
-    return;
+  const wasVisible = searchResultsEl.classList.contains('has-results');
+  if (visible === wasVisible) return;
+  clearTimeout(searchResultsHideTimer);
+  if (visible) {
+    searchResultsEl.style.display = 'block';
+    void searchResultsEl.offsetHeight;
+    searchResultsEl.classList.add('has-results');
+  } else {
+    searchResultsEl.classList.remove('has-results');
+    searchResultsHideTimer = setTimeout(() => {
+      searchResultsEl.style.display = '';
+      searchResultsHideTimer = null;
+    }, 180);
   }
-  const target = searchResultsEl.scrollHeight;
-  searchResultsEl.style.height = target + 'px';
+  requestDraw();
 }
 
-function addItem(item) {
+function setLinkVisible(el, visible) {
+  const isVisible = el.classList.contains('visible');
+  if (visible === isVisible) return;
+  clearTimeout(el._hideTimer);
+  if (visible) {
+    el.style.display = 'inline-flex';
+    void el.offsetHeight;
+    el.classList.add('visible');
+  } else {
+    el.classList.remove('visible');
+    el._hideTimer = setTimeout(() => {
+      el.style.display = '';
+      el._hideTimer = null;
+    }, 180);
+  }
+}
+
+function addItem(item, opts = {}) {
   const existing = items.find(r => r.id === item.id);
   if (existing) return;
   items.push(item);
   renderTags();
   saveState();
-  fitView();
+  fitView({ animated: opts.animateFit });
   requestDraw();
 }
 
@@ -172,12 +187,12 @@ function removeItem(id) {
   items = items.filter(r => r.id !== id);
   renderTags();
   saveState();
-  if (items.length > 0) fitView();
+  if (items.length > 0) fitView({ animated: true });
   requestDraw();
 }
 
 function saveState() {
-  const data = items.map(it => ({ id: it.id, start: it.start, end: it.end, color: it.color, wdId: it.wdId, wpLang: it.wpLang }));
+  const data = items.map(it => ({ id: it.id, start: it.start, end: it.end, color: it.color, wdId: it.wdId, wpLang: it.wpLang, startProp: it.startProp, endProp: it.endProp }));
   try { localStorage.setItem('timeline_items', JSON.stringify(data)); } catch {}
 }
 
@@ -259,17 +274,49 @@ function focusItem(id) {
   requestDraw();
 }
 
-function fitView() {
-  if (items.length === 0) return;
+function computeFitView() {
+  if (items.length === 0) return null;
   let maxStart = 0, minEnd = Infinity;
   for (const it of items) {
     maxStart = Math.max(maxStart, it.start);
     minEnd = Math.min(it.end, minEnd);
   }
   const pad = Math.max((maxStart - minEnd) * 0.2, 20);
-  viewStart = maxStart + pad;
-  viewEnd = Math.max(minEnd - pad, 0);
+  return { start: maxStart + pad, end: Math.max(minEnd - pad, 0) };
 }
+
+function fitView(opts = {}) {
+  const target = computeFitView();
+  if (!target) return;
+  if (opts.animated) {
+    animateView(target.start, target.end);
+  } else {
+    viewStart = target.start;
+    viewEnd = target.end;
+  }
+}
+
+let viewAnimId = 0;
+function animateView(targetStart, targetEnd, duration = 600) {
+  const id = ++viewAnimId;
+  const fromStart = viewStart;
+  const fromEnd = viewEnd;
+  if (fromStart === targetStart && fromEnd === targetEnd) return;
+  const t0 = performance.now();
+  const ease = t => t < 0.5 ? 16*t*t*t*t*t : 1 - Math.pow(-2*t+2, 5)/2;
+  function step(now) {
+    if (id !== viewAnimId) return;
+    const t = Math.min(1, (now - t0) / duration);
+    const e = ease(t);
+    viewStart = fromStart + (targetStart - fromStart) * e;
+    viewEnd = fromEnd + (targetEnd - fromEnd) * e;
+    requestDraw();
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function cancelViewAnimation() { viewAnimId++; }
 
 // --- Coordinate conversion ---
 function yearToX(yearsAgo) {
@@ -291,9 +338,11 @@ let mouseX = -1, mouseY = -1;
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  cancelViewAnimation();
   if (e.ctrlKey || e.shiftKey) {
     const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-    const zoomFactor = delta > 0 ? 1.15 : 1 / 1.15;
+    const magnitude = Math.min(Math.abs(delta), 400);
+    const zoomFactor = Math.exp(Math.sign(delta) * Math.sqrt(magnitude) * 0.015);
     const yearAtMouse = xToYear(e.clientX);
     const leftDist = yearAtMouse - viewEnd;
     const rightDist = viewStart - yearAtMouse;
@@ -316,6 +365,7 @@ canvas.addEventListener('wheel', (e) => {
 
 let dragStartY = 0;
 canvas.addEventListener('mousedown', (e) => {
+  cancelViewAnimation();
   isDragging = true;
   dragStartX = e.clientX;
   dragStartY = e.clientY;
@@ -383,6 +433,7 @@ async function openWikipedia(wdId, preferLang) {
 let lastTouchDist = 0;
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
+  cancelViewAnimation();
   if (e.touches.length === 1) { isDragging = true; dragStartX = e.touches[0].clientX; dragViewStart = viewStart; dragViewEnd = viewEnd; }
   else if (e.touches.length === 2) { isDragging = false; lastTouchDist = Math.abs(e.touches[0].clientX - e.touches[1].clientX); }
 }, { passive: false });
@@ -611,20 +662,20 @@ function draw() {
   // Tooltip
   updateTooltip();
 
-  // HUD — position below search box
+  // HUD — position below search box (and below results dropdown if open)
   const searchBox = document.getElementById('search-box');
-  const hudTop = searchBox.offsetTop + searchBox.offsetHeight + 8;
+  const sbBottom = searchBox.offsetTop + searchBox.offsetHeight;
+  searchResultsEl.style.top = (sbBottom + 6) + 'px';
+  const dropdownH = searchResultsEl.classList.contains('has-results') ? searchResultsEl.offsetHeight + 6 : 0;
+  const hudTop = sbBottom + dropdownH + 8;
   document.getElementById('hud').style.top = hudTop + 'px';
   scaleLabel.textContent = `Visible range: ${formatDuration(span)}`;
   centerTimeEl.textContent = `From ${formatYearsAgoFull(viewStart)} to ${formatYearsAgoFull(viewEnd)}`;
 
-  jumpEl.style.top = hudTop + 'px';
   const showJumpNow = viewEnd > 0;
   const showFitAll = items.length > 0;
-  jumpNowLink.hidden = !showJumpNow;
-  fitAllLink.hidden = !showFitAll;
-  jumpSpacer.hidden = !(showJumpNow && showFitAll);
-  jumpEl.style.display = showJumpNow || showFitAll ? 'block' : 'none';
+  setLinkVisible(jumpNowLink, showJumpNow);
+  setLinkVisible(fitAllLink, showFitAll);
 }
 
 // --- Wikidata search ---
@@ -632,7 +683,16 @@ const searchInput = document.getElementById('search-input');
 const searchResultsEl = document.getElementById('search-results');
 let searchTimeout = null;
 let activeSearchId = 0;
+let activeSearchController = null;
 const entityDatesCache = new Map();
+
+function cancelSearch() {
+  activeSearchId++;
+  if (activeSearchController) {
+    activeSearchController.abort();
+    activeSearchController = null;
+  }
+}
 const SEARCH_CANDIDATE_LIMIT = 10;
 const SEARCH_RESULT_LIMIT = 5;
 
@@ -642,7 +702,7 @@ searchInput.addEventListener('input', () => {
   clearTimeout(searchTimeout);
   const q = searchInput.value.trim();
   if (q.length < 2) {
-    activeSearchId++;
+    cancelSearch();
     clearElement(searchResultsEl);
     setSearchResultsVisible(false);
     return;
@@ -652,7 +712,7 @@ searchInput.addEventListener('input', () => {
 
 searchInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    activeSearchId++;
+    cancelSearch();
     clearElement(searchResultsEl);
     setSearchResultsVisible(false);
     searchInput.blur();
@@ -667,7 +727,7 @@ searchInput.addEventListener('focus', () => {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#search-box')) {
-    activeSearchId++;
+    cancelSearch();
     clearElement(searchResultsEl);
     setSearchResultsVisible(false);
   }
@@ -685,21 +745,22 @@ function detectInputLang(text) {
 }
 
 async function wikidataSearch(query) {
+  if (activeSearchController) activeSearchController.abort();
+  const controller = new AbortController();
+  activeSearchController = controller;
+  const signal = controller.signal;
   const searchId = ++activeSearchId;
   const isCurrentSearch = () => searchId === activeSearchId && searchInput.value.trim() === query;
   showSearchMessage('Searching...');
 
   try {
     const inputLang = detectInputLang(query);
-    const searchLangs = [inputLang];
-    for (const l of ['en', 'ru', 'be', 'uk', 'de', 'fr']) {
-      if (!searchLangs.includes(l)) searchLangs.push(l);
-    }
+    const searchLangs = inputLang === 'ru' ? ['ru', 'en'] : ['en', 'ru'];
     const seen = new Set();
     const allEntities = [];
 
     const fetches = searchLangs.map(lang =>
-      fetch('https://www.wikidata.org/w/api.php?action=wbsearchentities&search=' + encodeURIComponent(query) + '&language=' + lang + '&uselang=' + inputLang + '&limit=5&format=json&origin=*')
+      fetch('https://www.wikidata.org/w/api.php?action=wbsearchentities&search=' + encodeURIComponent(query) + '&language=' + lang + '&uselang=' + inputLang + '&limit=5&format=json&origin=*', { signal })
         .then(r => r.json())
         .then(d => (d.search || []).map(e => ({ ...e, _lang: lang })))
         .catch(() => [])
@@ -718,28 +779,32 @@ async function wikidataSearch(query) {
       return;
     }
 
+    // Fetch labels/descriptions/sitelinks in input language. Sitelinks count is used as a popularity signal for ranking.
+    const ids = allEntities.slice(0, 15).map(e => e.id).join('|');
+    const labelUrl = 'https://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + ids + '&props=labels|descriptions|sitelinks&languages=' + inputLang + '|en&format=json&origin=*';
+    let labelData = {};
+    try {
+      const lr = await fetch(labelUrl, { signal });
+      const lj = await lr.json();
+      labelData = lj.entities || {};
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+    if (!isCurrentSearch()) return;
+
     const queryLower = query.toLowerCase();
+    const popularity = (id) => Object.keys(labelData[id]?.sitelinks || {}).length;
     allEntities.sort((a, b) => {
       const aExact = (a.label || '').toLowerCase() === queryLower ? 0 : 1;
       const bExact = (b.label || '').toLowerCase() === queryLower ? 0 : 1;
-      return aExact - bExact;
+      if (aExact !== bExact) return aExact - bExact;
+      return popularity(b.id) - popularity(a.id);
     });
-
-    // Fetch labels/descriptions in input language
-    const ids = allEntities.slice(0, 15).map(e => e.id).join('|');
-    const labelUrl = 'https://www.wikidata.org/w/api.php?action=wbgetentities&ids=' + ids + '&props=labels|descriptions&languages=' + inputLang + '|en&format=json&origin=*';
-    let labelData = {};
-    try {
-      const lr = await fetch(labelUrl);
-      const lj = await lr.json();
-      labelData = lj.entities || {};
-    } catch {}
-    if (!isCurrentSearch()) return;
 
     const candidateDateResults = await Promise.all(
       allEntities.slice(0, SEARCH_CANDIDATE_LIMIT).map(async entity => ({
         entity,
-        dates: await getEntityDatesCached(entity.id),
+        dates: await getEntityDatesCached(entity.id, signal),
       }))
     );
     if (!isCurrentSearch()) return;
@@ -778,7 +843,7 @@ async function wikidataSearch(query) {
         clearTimeout(searchTimeout);
         const startYearsAgo = dateToYearsAgo(r.startYear, r.startEra);
         const endYearsAgo = hasEnd ? dateToYearsAgo(r.endYear, r.endEra) : startYearsAgo;
-        addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang });
+        addItem({ id: r.label, start: startYearsAgo, end: endYearsAgo, color: nextColor(), wdId: r.wdId, wpLang: r.wpLang, startProp: r.startProp, endProp: r.endProp }, { animateFit: true });
         clearElement(searchResultsEl);
         setSearchResultsVisible(false);
         searchInput.value = '';
@@ -787,45 +852,62 @@ async function wikidataSearch(query) {
       searchResultsEl.appendChild(div);
     }
     setSearchResultsVisible(searchResultsEl.children.length > 0);
-    updateSearchResultsHeight();
   } catch (err) {
+    if (err.name === 'AbortError') return;
     if (!isCurrentSearch()) return;
     showSearchMessage(`Error: ${err.message}`);
   }
 }
 
-function getEntityDatesCached(entityId) {
-  if (!entityDatesCache.has(entityId)) {
-    entityDatesCache.set(entityId, getEntityDates(entityId).catch(() => null));
-  }
-  return entityDatesCache.get(entityId);
+function getEntityDatesCached(entityId, signal) {
+  const cached = entityDatesCache.get(entityId);
+  if (cached) return cached;
+  const promise = getEntityDates(entityId, signal).catch(err => {
+    if (err.name === 'AbortError') entityDatesCache.delete(entityId);
+    return null;
+  });
+  entityDatesCache.set(entityId, promise);
+  return promise;
 }
 
-async function getEntityDates(entityId) {
+async function getEntityDates(entityId, signal) {
   const url = `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${entityId}&format=json&origin=*`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal });
   const json = await res.json();
   const claims = json.claims || {};
 
-  let startDate = extractDate(claims.P580) || extractDate(claims.P569) || extractDate(claims.P571) || extractDate(claims.P1319);
-  let isPointEvent = false;
-  if (!startDate) {
-    startDate = extractDate(claims.P575) || extractDate(claims.P585);
-    if (startDate) isPointEvent = true;
+  const startPropsRange = ['P580', 'P569', 'P571', 'P1319'];
+  const startPropsPoint = ['P575', 'P585'];
+  const endProps = ['P582', 'P570', 'P576', 'P1326'];
+
+  let startDate = null, startProp = null, isPointEvent = false;
+  for (const p of startPropsRange) {
+    startDate = extractDate(claims[p]);
+    if (startDate) { startProp = p; break; }
   }
-  let endDate = extractDate(claims.P582) || extractDate(claims.P570) || extractDate(claims.P576) || extractDate(claims.P1326);
+  if (!startDate) {
+    for (const p of startPropsPoint) {
+      startDate = extractDate(claims[p]);
+      if (startDate) { startProp = p; isPointEvent = true; break; }
+    }
+  }
+  let endDate = null, endProp = null;
+  for (const p of endProps) {
+    endDate = extractDate(claims[p]);
+    if (endDate) { endProp = p; break; }
+  }
 
   if (!startDate) {
     startDate = extractDateFromQualifiers(claims);
   }
 
   if (startDate) {
-    const result = { startYear: startDate.year, startEra: startDate.era, isPointEvent: isPointEvent && !endDate };
+    const result = { startYear: startDate.year, startEra: startDate.era, isPointEvent: isPointEvent && !endDate, startProp, endProp };
     if (endDate) { result.endYear = endDate.year; result.endEra = endDate.era; }
     return result;
   }
 
-  const wpDates = await getEntityDatesFromWikipedia(entityId);
+  const wpDates = await getEntityDatesFromWikipedia(entityId, signal);
   if (wpDates) wpDates.isPointEvent = false;
   return wpDates;
 }
@@ -861,16 +943,16 @@ function extractDateFromSnak(snak) {
   return { year, era: negative ? 'bce' : 'ce' };
 }
 
-async function getEntityDatesFromWikipedia(entityId) {
+async function getEntityDatesFromWikipedia(entityId, signal) {
   try {
     const siteUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${entityId}&props=sitelinks&sitefilter=enwiki&format=json&origin=*`;
-    const siteRes = await fetch(siteUrl);
+    const siteRes = await fetch(siteUrl, { signal });
     const siteJson = await siteRes.json();
     const title = siteJson.entities?.[entityId]?.sitelinks?.enwiki?.title;
     if (!title) return null;
 
     const wpUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exchars=2000&titles=${encodeURIComponent(title)}&format=json&origin=*`;
-    const wpRes = await fetch(wpUrl);
+    const wpRes = await fetch(wpUrl, { signal });
     const wpJson = await wpRes.json();
     const pages = wpJson.query?.pages;
     if (!pages) return null;
@@ -879,7 +961,10 @@ async function getEntityDatesFromWikipedia(entityId) {
     if (!extract) return null;
 
     return parseDatesFromText(extract);
-  } catch { return null; }
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    return null;
+  }
 }
 
 function parseDatesFromText(text) {
@@ -962,6 +1047,55 @@ function formatDateForDisplay(year, era) {
   return `${year} CE`;
 }
 
+const PROP_LABELS = {
+  en: {
+    P569: 'Date of birth', P570: 'Date of death',
+    P571: 'Inception', P576: 'Dissolved',
+    P580: 'Start', P582: 'End',
+    P575: 'Date of discovery', P585: 'Date',
+    P1319: 'Earliest date', P1326: 'Latest date',
+  },
+  ru: {
+    P569: 'Дата рождения', P570: 'Дата смерти',
+    P571: 'Основано', P576: 'Прекращено',
+    P580: 'Начало', P582: 'Окончание',
+    P575: 'Дата открытия', P585: 'Дата',
+    P1319: 'Самая ранняя дата', P1326: 'Самая поздняя дата',
+  },
+};
+
+const RANGE_LABELS = {
+  en: {
+    'P569-P570': 'Lifespan',
+    'P571-P576': 'Existence',
+    'P580-P582': 'Period',
+    'P1319-P1326': 'Range',
+  },
+  ru: {
+    'P569-P570': 'Годы жизни',
+    'P571-P576': 'Существование',
+    'P580-P582': 'Период',
+    'P1319-P1326': 'Диапазон',
+  },
+};
+
+const LIVING_LABEL = { en: 'Born (still alive)', ru: 'Дата рождения' };
+
+function getDateLabel(item) {
+  const lang = (item.wpLang === 'ru') ? 'ru' : 'en';
+  const labels = PROP_LABELS[lang];
+  const ranges = RANGE_LABELS[lang];
+  if (!item.startProp) return '';
+  if (item.endProp) {
+    const key = item.startProp + '-' + item.endProp;
+    return ranges[key] || `${labels[item.startProp] || ''} — ${labels[item.endProp] || ''}`;
+  }
+  if (item.startProp === 'P569' && item.start === item.end) {
+    return LIVING_LABEL[lang];
+  }
+  return labels[item.startProp] || '';
+}
+
 // --- Tooltip on hover ---
 const tooltip = document.getElementById('tooltip');
 
@@ -982,6 +1116,8 @@ function updateTooltip() {
   const isPoint = found.start === found.end;
   clearElement(tooltip);
   appendTextElement(tooltip, 'div', 'tt-title', found.id);
+  const label = getDateLabel(found);
+  if (label) appendTextElement(tooltip, 'div', 'tt-label', label);
   const datesEl = appendTextElement(tooltip, 'div', 'tt-dates', calStart);
   if (isPoint) {
     datesEl.textContent = calStart;

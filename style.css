@@ -43,19 +43,24 @@ body {
 #hud {
   position: fixed;
   left: 16px;
-  pointer-events: none;
+  right: 16px;
   z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
 }
 
 #scale-label {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
+  justify-self: start;
 }
 
 #center-time {
-  font-size: 12px;
-  color: var(--text-dim);
+  justify-self: center;
+  text-align: center;
 }
 
 #search-box {
@@ -145,23 +150,30 @@ body {
 }
 
 #search-results {
-  width: 100%;
-  height: 0;
-  opacity: 0;
-  overflow-y: hidden;
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: 80px;
+  max-height: 70vh;
+  overflow-y: auto;
   overflow-x: hidden;
+  z-index: 9;
+  background: var(--control-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--axis);
+  border-radius: 6px;
+  opacity: 0;
   pointer-events: none;
-  transition: height 0.22s ease, opacity 0.16s ease;
-  display: block;
+  transform: translateY(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  display: none;
 }
 
 #search-results.has-results {
   opacity: 1;
   pointer-events: auto;
-}
-
-#search-results.has-results.scrollable {
-  overflow-y: auto;
+  transform: translateY(0);
 }
 
 .search-result-item {
@@ -218,19 +230,29 @@ body {
   margin-bottom: 4px;
 }
 
+#tooltip .tt-label {
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+
 #tooltip .tt-dates {
   color: var(--text-muted);
 }
 
 #app-version {
   position: fixed;
-  right: 16px;
+  left: 16px;
   bottom: 14px;
   z-index: 6;
   padding: 3px 7px;
   border: 1px solid var(--axis);
   border-radius: 4px;
   background: var(--control-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-dim);
   font-size: 11px;
   line-height: 1;
@@ -239,22 +261,37 @@ body {
 }
 
 #jump-now {
-  position: fixed;
-  right: 16px;
-  font-size: 12px;
-  z-index: 5;
-  display: none;
+  justify-self: end;
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
 }
 
 #jump-now a {
+  display: none;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid var(--axis);
+  border-radius: 4px;
+  background: var(--control-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-dim);
   text-decoration: none;
   cursor: pointer;
-  transition: color 0.15s;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.16s ease, transform 0.16s ease, color 0.15s, background 0.15s;
+}
+
+#jump-now a.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 #jump-now a:hover {
   color: var(--text);
+  background: var(--control-hover);
 }
 
 #help {
