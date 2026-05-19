@@ -91,9 +91,19 @@ function assignRows(spans) {
 }
 
 const LUCIDE_ICONS = {
-  arrowRight: ['M5 12h14', 'm12 5 7 7-7 7'],
-  maximize: ['M8 3H5a2 2 0 0 0-2 2v3', 'M21 8V5a2 2 0 0 0-2-2h-3', 'M3 16v3a2 2 0 0 0 2 2h3', 'M16 21h3a2 2 0 0 0 2-2v-3'],
-  x: ['M18 6 6 18', 'm6 6 12 12'],
+  arrowRight: [
+    { tag: 'path', d: 'M5 12h14' },
+    { tag: 'path', d: 'm12 5 7 7-7 7' },
+  ],
+  alignHSpaceAround: [
+    { tag: 'rect', width: 6, height: 10, x: 9, y: 7, rx: 2 },
+    { tag: 'path', d: 'M4 22V2' },
+    { tag: 'path', d: 'M20 22V2' },
+  ],
+  x: [
+    { tag: 'path', d: 'M18 6 6 18' },
+    { tag: 'path', d: 'm6 6 12 12' },
+  ],
 };
 
 function createLucideIcon(name, size = 14) {
@@ -107,10 +117,12 @@ function createLucideIcon(name, size = 14) {
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.classList.add('lucide');
-  for (const d of LUCIDE_ICONS[name]) {
-    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p.setAttribute('d', d);
-    svg.appendChild(p);
+  for (const node of LUCIDE_ICONS[name]) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', node.tag);
+    for (const [k, v] of Object.entries(node)) {
+      if (k !== 'tag') el.setAttribute(k, v);
+    }
+    svg.appendChild(el);
   }
   return svg;
 }
@@ -121,7 +133,7 @@ const jumpNowLink = document.createElement('a');
 const fitAllLink = document.createElement('a');
 
 jumpNowLink.id = 'jump-now-link';
-jumpNowLink.append(createLucideIcon('arrowRight', 13), document.createTextNode(' now'));
+jumpNowLink.append(createLucideIcon('arrowRight', 13), document.createTextNode(' Now'));
 jumpNowLink.addEventListener('click', () => {
   const s = viewStart - viewEnd;
   const targetStart = Math.min(s, BIG_BANG);
@@ -129,7 +141,7 @@ jumpNowLink.addEventListener('click', () => {
 });
 
 fitAllLink.id = 'fit-all-link';
-fitAllLink.append(createLucideIcon('maximize', 13), document.createTextNode(' fit all'));
+fitAllLink.append(createLucideIcon('alignHSpaceAround', 13), document.createTextNode(' Fit All'));
 fitAllLink.addEventListener('click', () => {
   const target = computeFitView();
   if (target) animateView(target.start, target.end);
@@ -721,7 +733,15 @@ function cancelSearch() {
 const SEARCH_CANDIDATE_LIMIT = 10;
 const SEARCH_RESULT_LIMIT = 5;
 
-searchInput.placeholder = 'Search...';
+searchInput.placeholder = 'Add...';
+
+let selectedResultIndex = 0;
+function updateSelectedResult() {
+  const els = searchResultsEl.querySelectorAll('.search-result-item');
+  els.forEach((el, i) => el.classList.toggle('selected', i === selectedResultIndex));
+  const sel = els[selectedResultIndex];
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
 
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimeout);
@@ -741,6 +761,21 @@ searchInput.addEventListener('keydown', (e) => {
     clearElement(searchResultsEl);
     setSearchResultsVisible(false);
     searchInput.blur();
+    return;
+  }
+  const els = searchResultsEl.querySelectorAll('.search-result-item');
+  if (els.length === 0) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    selectedResultIndex = (selectedResultIndex + 1) % els.length;
+    updateSelectedResult();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    selectedResultIndex = (selectedResultIndex - 1 + els.length) % els.length;
+    updateSelectedResult();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (els[selectedResultIndex]) els[selectedResultIndex].click();
   }
 });
 
@@ -876,6 +911,8 @@ async function wikidataSearch(query) {
       });
       searchResultsEl.appendChild(div);
     }
+    selectedResultIndex = 0;
+    updateSelectedResult();
     setSearchResultsVisible(searchResultsEl.children.length > 0);
   } catch (err) {
     if (err.name === 'AbortError') return;

@@ -93,9 +93,9 @@ body {
 .search-tag {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: 4px;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 6px;
   font-size: 12px;
   color: var(--text);
   white-space: nowrap;
@@ -107,6 +107,7 @@ body {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .search-tag .tag-remove {
@@ -139,8 +140,7 @@ body {
 }
 
 #search-input:focus {
-  border-color: var(--text-muted);
-  background: var(--control-hover);
+  background: none;
 }
 
 #search-input::placeholder {
@@ -187,7 +187,8 @@ body {
   border-bottom: none;
 }
 
-.search-result-item:hover {
+.search-result-item:hover,
+.search-result-item.selected {
   background: var(--control-hover);
 }
 
@@ -269,7 +270,7 @@ body {
   display: none;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 4px;
   border: 1px solid var(--axis);
   border-radius: 4px;
   background: var(--control-bg);
@@ -291,6 +292,11 @@ body {
 #jump-now a:hover {
   color: var(--text);
   background: var(--control-hover);
+}
+
+#jump-now a#jump-now-link,
+#jump-now a#jump-now-link:hover {
+  color: #e8a735;
 }
 
 #help {
