@@ -239,7 +239,12 @@ function loadState() {
     if (raw) {
       const data = JSON.parse(raw);
       if (Array.isArray(data) && data.length > 0) {
-        items = data;
+        items = data.map(it => {
+          if ((it.wdId === 'Q937' || it.id === 'Albert Einstein') && !it.startProp && !it.endProp) {
+            return { ...it, startProp: 'P569', endProp: 'P570' };
+          }
+          return it;
+        });
         colorIndex = items.length;
         renderTags();
         fitView();
@@ -265,6 +270,11 @@ function renderTags() {
     tag.append(dot, document.createTextNode(item.id), remove);
     tag.addEventListener('click', () => {
       focusItem(item.id);
+    });
+    tag.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      zoomToItem(item.id);
     });
     remove.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -318,6 +328,26 @@ function focusItem(id) {
   const nextView = clampView(center + span / 2, center - span / 2);
   viewStart = nextView.start;
   viewEnd = nextView.end;
+  highlightItem(id);
+  requestDraw();
+}
+
+function zoomToItem(id, animated = true) {
+  const item = items.find(it => it.id === id);
+  if (!item) return;
+  const itemSpan = Math.max(item.start - item.end, 1);
+  const usable = Math.max(W - PAD_LEFT - PAD_RIGHT, 1);
+  const edgeReserve = 0.1;
+  const targetBarW = Math.max(usable * (1 - edgeReserve * 2), 1);
+  const targetSpan = Math.max(itemSpan * usable / targetBarW, itemSpan + 1);
+  const center = (item.start + item.end) / 2;
+  const nextView = clampView(center + targetSpan / 2, center - targetSpan / 2);
+  if (animated) {
+    animateView(nextView.start, nextView.end);
+  } else {
+    viewStart = nextView.start;
+    viewEnd = nextView.end;
+  }
   highlightItem(id);
   requestDraw();
 }
@@ -1232,6 +1262,14 @@ function formatDateForDisplay(year, era) {
   return `${year} CE`;
 }
 
+function formatTooltipAge(years, lang) {
+  if (years < 1) return formatDuration(years);
+  if (years < 1e3) return lang === 'ru' ? `${years.toFixed(0)} лет` : `${years.toFixed(0)} years`;
+  if (years < 1e6) return `${(years / 1e3).toFixed(1)} kyr`;
+  if (years < 1e9) return `${(years / 1e6).toFixed(1)} Myr`;
+  return `${(years / 1e9).toFixed(2)} Byr`;
+}
+
 const PROP_LABELS = {
   en: {
     P569: 'Date of birth', P570: 'Date of death',
@@ -1300,6 +1338,20 @@ function getDateLabel(item) {
 // --- Tooltip on hover ---
 const tooltip = document.getElementById('tooltip');
 
+function addTooltipRow(parent, label, value) {
+  const row = document.createElement('div');
+  row.className = 'tt-row';
+  const key = document.createElement('div');
+  key.className = 'tt-key';
+  key.textContent = label;
+  const val = document.createElement('div');
+  val.className = 'tt-val';
+  val.textContent = value;
+  row.append(key, val);
+  parent.appendChild(row);
+  return row;
+}
+
 function updateTooltip() {
   if (isDragging) { tooltip.style.display = 'none'; return; }
 
@@ -1315,19 +1367,15 @@ function updateTooltip() {
 
   const calStart = formatCalendarYear(found.start);
   const isPoint = found.start === found.end;
+  const lang = (found.wpLang === 'ru') ? 'ru' : 'en';
+  const dateLabel = getDateLabel(found) || (lang === 'ru' ? 'Дата' : 'Date');
+  const isPerson = found.startProp === 'P569' || found.endProp === 'P570' || found.wdId === 'Q937';
+  const metricLabel = isPerson ? (lang === 'ru' ? 'Возраст' : 'Age') : (lang === 'ru' ? 'Продолжительность' : 'Duration');
   clearElement(tooltip);
   appendTextElement(tooltip, 'div', 'tt-title', found.id);
-  const label = getDateLabel(found);
-  if (label) appendTextElement(tooltip, 'div', 'tt-label', label);
-  const datesEl = appendTextElement(tooltip, 'div', 'tt-dates', calStart);
-  if (isPoint) {
-    datesEl.textContent = calStart;
-  } else {
-    const calEnd = found.end > 0 ? formatCalendarYear(found.end) : formatCalendarYear(0);
-    const duration = found.start - found.end;
-    datesEl.textContent = `${calStart} — ${calEnd}`;
-    datesEl.append(document.createElement('br'), document.createTextNode(formatDuration(duration)));
-  }
+  appendTextElement(tooltip, 'div', 'tt-divider', '');
+  addTooltipRow(tooltip, dateLabel, isPoint ? calStart : `${calStart} – ${formatCalendarYear(found.end > 0 ? found.end : 0)}`);
+  if (!isPoint) addTooltipRow(tooltip, metricLabel, formatTooltipAge(found.start - found.end, lang));
   tooltip.style.display = 'block';
 
   let tx = mouseX + 16;
@@ -1339,7 +1387,7 @@ function updateTooltip() {
 }
 
 if (!loadState()) {
-  addItem({ id: 'Albert Einstein', start: CURRENT_YEAR - 1879, end: CURRENT_YEAR - 1955, color: nextColor(), wdId: 'Q937' });
+  addItem({ id: 'Albert Einstein', start: CURRENT_YEAR - 1879, end: CURRENT_YEAR - 1955, color: nextColor(), wdId: 'Q937', startProp: 'P569', endProp: 'P570' });
   addItem({ id: 'World War I', start: CURRENT_YEAR - 1914, end: CURRENT_YEAR - 1918, color: nextColor(), wdId: 'Q361' });
   addItem({ id: 'World War II', start: CURRENT_YEAR - 1939, end: CURRENT_YEAR - 1945, color: nextColor(), wdId: 'Q362' });
 }
